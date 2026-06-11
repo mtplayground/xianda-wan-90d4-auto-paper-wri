@@ -1,8 +1,16 @@
 target/
 node_modules/
+.venv/
+dist/
+__pycache__/
+.pytest_cache/
+*.tsbuildinfo
 .gh_token
 .claude/
 .database_url
+.db_decision
+.env.production
+.storage_decision
 .task_id
 .container_name
 .app_name
