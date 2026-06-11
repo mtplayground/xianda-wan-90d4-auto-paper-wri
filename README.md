@@ -21,7 +21,9 @@ npm install
 Install Python dependencies:
 
 ```bash
-python3 -m pip install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements-dev.txt
 ```
 
 Run the API:
@@ -40,4 +42,12 @@ Build both scaffolded apps:
 
 ```bash
 npm run build
+```
+
+Run quality checks:
+
+```bash
+npm run typecheck
+npm run lint
+npm run format:check
 ```
