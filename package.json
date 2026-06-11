@@ -1,0 +1,22 @@
+{
+  "name": "xianda-wan-90d4-auto-paper-wri",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace apps/web run dev -- --host 0.0.0.0",
+    "build:web": "npm --workspace apps/web run build",
+    "preview:web": "npm --workspace apps/web run preview -- --host 0.0.0.0",
+    "dev:api": "uvicorn app.main:app --app-dir apps/api --host 0.0.0.0 --port 8080 --reload",
+    "start:api": "uvicorn app.main:app --app-dir apps/api --host 0.0.0.0 --port 8080",
+    "build": "npm run build:web && python3 -m compileall apps/api/app"
+  },
+  "engines": {
+    "node": ">=20",
+    "npm": ">=9",
+    "python": ">=3.11"
+  }
+}
