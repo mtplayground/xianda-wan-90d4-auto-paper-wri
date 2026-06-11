@@ -1,0 +1,108 @@
+# Architecture Plan
+
+## Product Context
+
+The repository currently only contains the initial README, so later issues should introduce the application structure incrementally. The product name/brand should continue to come from issue text and PRODUCT.md once present; no placeholder branding should be introduced.
+
+The requested system is a full-stack academic paper writing application with authentication, paper/template management, LaTeX compilation, reference ingestion with embeddings, and AI-assisted writing over user references.
+
+## Module Structure
+
+Proposed repository layout:
+
+```text
+apps/
+  web/                    # Frontend application
+  api/                    # Backend HTTP API and workers
+packages/
+  shared/                 # Shared TypeScript types, schemas, API contracts
+  config/                 # Shared lint, formatting, tsconfig presets
+infra/
+  migrations/             # Database migrations if not colocated with ORM
+  seeds/                  # Built-in template seed data
+  docker/                 # Local service definitions and deploy helpers
+storage/
+  templates/              # Optional local development fixtures only
+tests/
+  e2e/                    # Core browser/API flow tests
+```
+
+Expected backend modules:
+
+```text
+apps/api/src/
+  config/                 # env parsing, typed settings
+  db/                     # ORM client, schema, migrations, seeds
+  auth/                   # password hashing, JWT, OAuth, middleware
+  users/                  # user model and user-facing auth handlers
+  papers/                 # paper model, CRUD, editor state
+  templates/              # template upload/listing/new-paper flow
+  storage/                # object storage client and signed URL helpers
+  compile/                # TeX Live runner, job model, queue, logs, PDF output
+  references/             # upload, PDF parsing, chunks, embeddings, library API
+  ai/                     # Claude client, prompts, rewrite/continuation/RAG
+  http/                   # route registration, error handling, validation
+  workers/                # async compilation and embedding workers
+```
+
+Expected frontend modules:
+
+```text
+apps/web/src/
+  app/                    # router, providers, app shell
+  auth/                   # login/register/OAuth callback pages and auth context
+  papers/                 # dashboard, editor shell, compile/PDF/log UI
+  templates/              # template browser and new-paper flow
+  references/             # reference library upload/list/manage UI
+  assistant/              # AI assistant panel and suggestion interactions
+  api/                    # typed API client generated from shared schemas
+  components/             # reusable UI primitives
+```
+
+Shared package responsibilities:
+
+- Runtime validation schemas for request/response bodies.
+- Shared domain types for users, papers, templates, compile jobs, references, chunks, and AI suggestions.
+- API route contract helpers to avoid frontend/backend drift.
+- Common constants such as job statuses, OAuth providers, supported template types, and compile states.
+
+## Data Model Direction
+
+Use PostgreSQL with pgvector for relational data and embeddings. Keep binary artifacts in object storage rather than the database.
+
+Core tables:
+
+- `users`: email, password hash when applicable, OAuth identities, timestamps.
+- `papers`: owner, title, source text/metadata, template lineage, timestamps.
+- `templates`: built-in/user templates, storage object keys, metadata.
+- `compile_jobs`: paper, status, logs, output object keys, timing/error metadata.
+- `references`: owner, source file metadata, parsed text status, storage object keys.
+- `reference_chunks`: reference, chunk text, ordering, token counts.
+- `reference_embeddings`: chunk, embedding vector, model/version metadata.
+
+Access control should be owner-scoped at the service/query layer for every user-owned resource. Object storage keys should include stable prefixes by resource type and owner id.
+
+## Issue Dependencies
+
+- #1-#5 establish repository, tooling, database/storage clients, and environment configuration.
+- #6-#11 build the authentication foundation: user schema, password/JWT handling, auth routes, OAuth, middleware, and frontend auth state.
+- #12-#15 depend on auth and create the first authenticated product loop for paper CRUD and editing.
+- #16-#19 add templates and depend on papers plus storage.
+- #20-#23 add LaTeX compilation and depend on papers, storage, async jobs, and frontend editor shell.
+- #24-#27 add the reference library and depend on database, storage, parsing, embeddings, and authenticated UI.
+- #28-#32 add AI writing features and depend on papers, references, embeddings, and Claude configuration.
+- #33 validates the core end-to-end flow after auth, paper, template, compile, reference, and AI surfaces exist.
+- #34 should review validation and error handling after most API surfaces are implemented.
+- #35 should finalize runtime configuration, deploy scripts, health checks, and operational documentation.
+
+## Key Design Decisions
+
+- Prefer a TypeScript full-stack implementation because the issue list explicitly calls out TypeScript config and benefits from shared API/domain types.
+- Use one typed validation layer at API boundaries and reuse it in the frontend client.
+- Keep ORM schema and migrations close to backend code unless the selected ORM strongly prefers a top-level migrations directory.
+- Treat compilation, PDF parsing, embedding generation, and AI calls as asynchronous work with durable job/status records.
+- Store LaTeX templates, uploaded references, generated PDFs, and other large artifacts in object storage.
+- Keep AI prompt scaffolding isolated from transport clients so Claude model settings, retrieval context assembly, and prompt versions can evolve independently.
+- Make `.env.example` comprehensive in issue #5, including database, JWT, OAuth, object storage, Claude, queue, and app URL settings.
+- Seed built-in templates through repeatable seed scripts rather than ad hoc committed generated data.
+- Design tests around the product flow: register/login, create paper from template, edit, compile, upload reference, request AI suggestion, and verify visible output/status.
