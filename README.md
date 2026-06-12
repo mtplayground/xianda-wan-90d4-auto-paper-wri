@@ -82,3 +82,6 @@ linked local or OAuth identity in `user_identities`.
 Authentication helpers use Argon2 for password hashing and verify the
 pre-provisioned `mctai_session` cookie against the myClawTeam JWKS endpoint.
 The backend does not issue a second application JWT.
+
+Auth routes under `/api/auth` redirect registration and login to myClawTeam
+auth. `/api/auth/me` verifies the `mctai_session` cookie and upserts the user.
