@@ -1,10 +1,15 @@
 import type {
+  AiAssistantResponse,
+  CitationSuggestionPayload,
   CompilationJob,
+  ContinuePaperPayload,
   Paper,
   PaperCreatePayload,
   PaperUpdatePayload,
+  PolishPaperPayload,
   ReferenceChunk,
   ReferenceItem,
+  ReferenceSearchResult,
   ReferenceUploadResponse,
   Template
 } from "./types";
@@ -121,6 +126,38 @@ function isReferenceUploadResponse(value: unknown): value is ReferenceUploadResp
   );
 }
 
+function isReferenceSearchResult(value: unknown): value is ReferenceSearchResult {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    typeof value.reference_id === "string" &&
+    typeof value.reference_title === "string" &&
+    typeof value.chunk_id === "string" &&
+    typeof value.chunk_index === "number" &&
+    typeof value.content === "string" &&
+    typeof value.score === "number" &&
+    typeof value.distance === "number" &&
+    isRecord(value.metadata)
+  );
+}
+
+function isAiAssistantResponse(value: unknown): value is AiAssistantResponse {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    typeof value.text === "string" &&
+    typeof value.model === "string" &&
+    (typeof value.stop_reason === "string" || value.stop_reason === null) &&
+    (typeof value.input_tokens === "number" || value.input_tokens === null) &&
+    (typeof value.output_tokens === "number" || value.output_tokens === null) &&
+    typeof value.reference_context === "string" &&
+    Array.isArray(value.references) &&
+    value.references.every(isReferenceSearchResult)
+  );
+}
+
 async function parsePaperResponse(response: Response): Promise<Paper> {
   const body: unknown = await response.json();
   if (!isPaper(body)) {
@@ -135,6 +172,16 @@ async function parseCompilationJobResponse(
   const body: unknown = await response.json();
   if (!isCompilationJob(body)) {
     throw new Error("Compilation job response had an unexpected shape");
+  }
+  return body;
+}
+
+async function parseAiAssistantResponse(
+  response: Response
+): Promise<AiAssistantResponse> {
+  const body: unknown = await response.json();
+  if (!isAiAssistantResponse(body)) {
+    throw new Error("AI assistant response had an unexpected shape");
   }
   return body;
 }
@@ -348,4 +395,61 @@ export async function deleteReference(referenceId: string): Promise<void> {
   if (!response.ok) {
     throw new Error(`Reference deletion failed with ${response.status}`);
   }
+}
+
+export async function polishPaperText(
+  paperId: string,
+  payload: PolishPaperPayload
+): Promise<AiAssistantResponse> {
+  const response = await fetch(`/api/papers/${paperId}/ai/polish`, {
+    body: JSON.stringify(payload),
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    },
+    method: "POST"
+  });
+  if (!response.ok) {
+    throw new Error(`AI polish failed with ${response.status}`);
+  }
+  return parseAiAssistantResponse(response);
+}
+
+export async function continuePaperText(
+  paperId: string,
+  payload: ContinuePaperPayload
+): Promise<AiAssistantResponse> {
+  const response = await fetch(`/api/papers/${paperId}/ai/continue`, {
+    body: JSON.stringify(payload),
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    },
+    method: "POST"
+  });
+  if (!response.ok) {
+    throw new Error(`AI continuation failed with ${response.status}`);
+  }
+  return parseAiAssistantResponse(response);
+}
+
+export async function suggestPaperCitations(
+  paperId: string,
+  payload: CitationSuggestionPayload
+): Promise<AiAssistantResponse> {
+  const response = await fetch(`/api/papers/${paperId}/references/suggestions`, {
+    body: JSON.stringify(payload),
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    },
+    method: "POST"
+  });
+  if (!response.ok) {
+    throw new Error(`Citation suggestion failed with ${response.status}`);
+  }
+  return parseAiAssistantResponse(response);
 }

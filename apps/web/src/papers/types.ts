@@ -81,3 +81,49 @@ export type ReferenceUploadResponse = {
   chunks: ReferenceChunk[];
   extracted_text_chars: number;
 };
+
+export type ReferenceSearchResult = {
+  reference_id: string;
+  reference_title: string;
+  chunk_id: string;
+  chunk_index: number;
+  content: string;
+  score: number;
+  distance: number;
+  metadata: Record<string, unknown>;
+};
+
+export type AiAssistantResponse = {
+  text: string;
+  model: string;
+  stop_reason: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  reference_context: string;
+  references: ReferenceSearchResult[];
+};
+
+export type PolishPaperPayload = {
+  selected_text: string;
+  surrounding_context?: string;
+  instruction?: string;
+  operation?: "polish" | "rewrite";
+  reference_query?: string;
+  reference_limit?: number;
+};
+
+export type ContinuePaperPayload = {
+  draft_context: string;
+  instruction?: string;
+  target_length?: "short" | "medium" | "long";
+  reference_query?: string;
+  reference_limit?: number;
+};
+
+export type CitationSuggestionPayload = {
+  passage: string;
+  instruction?: string;
+  reference_query?: string;
+  reference_limit?: number;
+  context_max_chars?: number;
+};
