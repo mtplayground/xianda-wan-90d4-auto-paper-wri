@@ -4,7 +4,16 @@ from pathlib import PurePath
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -27,6 +36,7 @@ from app.references.service import (
     get_reference_for_owner,
     list_references_for_owner,
 )
+from app.references.worker import run_reference_embedding_job
 from app.storage.client import (
     ObjectStorageClient,
     ObjectStorageError,
@@ -153,6 +163,7 @@ def get_reference(
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_reference_pdf(
+    background_tasks: BackgroundTasks,
     current_user: CurrentUser,
     session: Annotated[Session, Depends(get_session)],
     storage: Annotated[ObjectStorageClient, Depends(get_storage_client)],
@@ -224,6 +235,7 @@ async def upload_reference_pdf(
         )
         session.commit()
         session.refresh(reference)
+        background_tasks.add_task(run_reference_embedding_job, reference.id)
     except SQLAlchemyError as exc:
         session.rollback()
         try:
