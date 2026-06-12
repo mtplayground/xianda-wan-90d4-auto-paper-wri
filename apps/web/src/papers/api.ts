@@ -1,4 +1,10 @@
-import type { CompilationJob, Paper, PaperCreatePayload, Template } from "./types";
+import type {
+  CompilationJob,
+  Paper,
+  PaperCreatePayload,
+  PaperUpdatePayload,
+  Template
+} from "./types";
 
 function isPaper(value: unknown): value is Paper {
   if (typeof value !== "object" || value === null) {
@@ -150,6 +156,25 @@ export async function createPaper(payload: PaperCreatePayload): Promise<Paper> {
   });
   if (!response.ok) {
     throw new Error(`Paper creation failed with ${response.status}`);
+  }
+  return parsePaperResponse(response);
+}
+
+export async function updatePaper(
+  paperId: string,
+  payload: PaperUpdatePayload
+): Promise<Paper> {
+  const response = await fetch(`/api/papers/${paperId}`, {
+    body: JSON.stringify(payload),
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    },
+    method: "PATCH"
+  });
+  if (!response.ok) {
+    throw new Error(`Paper update failed with ${response.status}`);
   }
   return parsePaperResponse(response);
 }
