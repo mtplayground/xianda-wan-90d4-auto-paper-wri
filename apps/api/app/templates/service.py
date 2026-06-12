@@ -16,6 +16,18 @@ def list_templates_for_user(session: Session, owner_id: UUID) -> list[Template]:
     return list(session.scalars(statement))
 
 
+def get_template_for_user(
+    session: Session,
+    owner_id: UUID,
+    template_id: UUID,
+) -> Template | None:
+    statement = select(Template).where(
+        Template.id == template_id,
+        or_(Template.is_built_in.is_(True), Template.owner_id == owner_id),
+    )
+    return session.scalar(statement)
+
+
 def create_template_for_owner(
     session: Session,
     owner_id: UUID,

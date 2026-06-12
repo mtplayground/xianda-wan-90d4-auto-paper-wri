@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 
-import { createPaper, deletePaper, listPapers } from "./api";
-import type { Paper } from "./types";
+import {
+  createPaper,
+  createPaperFromTemplate,
+  deletePaper,
+  listPapers,
+  listTemplates
+} from "./api";
+import type { Paper, Template } from "./types";
 
 const starterLatex = String.raw`\section{Introduction}
 
@@ -26,12 +32,18 @@ function sourceSummary(source: string): string {
 
 export function PaperDashboard() {
   const [papers, setPapers] = useState<Paper[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
   const [title, setTitle] = useState("");
   const [latexSource, setLatexSource] = useState(starterLatex);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [creatingFromTemplateId, setCreatingFromTemplateId] = useState<string | null>(
+    null
+  );
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [templateError, setTemplateError] = useState<string | null>(null);
 
   const totalSourceCharacters = useMemo(
     () => papers.reduce((total, paper) => total + paper.latex_source.length, 0),
@@ -57,6 +69,32 @@ export function PaperDashboard() {
       .finally(() => {
         if (!controller.signal.aborted) {
           setIsLoading(false);
+        }
+      });
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setIsLoadingTemplates(true);
+    setTemplateError(null);
+    void listTemplates(controller.signal)
+      .then((templateList) => {
+        setTemplates(templateList);
+      })
+      .catch((listError: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setTemplateError(
+          listError instanceof Error ? listError.message : "Could not load templates"
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsLoadingTemplates(false);
         }
       });
     return () => {
@@ -103,6 +141,24 @@ export function PaperDashboard() {
       );
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function handleCreateFromTemplate(template: Template) {
+    setCreatingFromTemplateId(template.id);
+    setTemplateError(null);
+    try {
+      const createdPaper = await createPaperFromTemplate(template.id, template.name);
+      setPapers((currentPapers) => [createdPaper, ...currentPapers]);
+      window.location.href = `/papers/${createdPaper.id}`;
+    } catch (createError) {
+      setTemplateError(
+        createError instanceof Error
+          ? createError.message
+          : "Could not create paper from template"
+      );
+    } finally {
+      setCreatingFromTemplateId(null);
     }
   }
 
@@ -155,6 +211,80 @@ export function PaperDashboard() {
             {isCreating ? "Creating..." : "+ Create paper"}
           </button>
         </form>
+
+        <div className="mt-6 border-t border-zinc-200 pt-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold tracking-normal">
+                Template gallery
+              </h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                Start a paper with uploaded or built-in LaTeX source.
+              </p>
+            </div>
+            {isLoadingTemplates ? (
+              <span className="text-sm text-zinc-500">Loading</span>
+            ) : (
+              <span className="text-sm text-zinc-500">
+                {templates.length} {templates.length === 1 ? "template" : "templates"}
+              </span>
+            )}
+          </div>
+
+          {templateError ? (
+            <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+              {templateError}
+            </div>
+          ) : null}
+
+          <div className="mt-4 grid gap-3">
+            {isLoadingTemplates ? (
+              <div className="rounded-md border border-zinc-200 p-4">
+                <div className="h-4 w-1/2 rounded bg-zinc-200" />
+                <div className="mt-3 h-3 w-full rounded bg-zinc-100" />
+              </div>
+            ) : null}
+
+            {!isLoadingTemplates && templates.length === 0 ? (
+              <div className="rounded-md border border-dashed border-zinc-300 p-4 text-sm text-zinc-600">
+                No templates available yet.
+              </div>
+            ) : null}
+
+            {templates.map((template) => (
+              <article
+                className="rounded-md border border-zinc-200 p-4 transition hover:border-zinc-300 hover:bg-zinc-50"
+                key={template.id}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="truncate text-sm font-semibold text-zinc-950">
+                        {template.name}
+                      </h3>
+                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-700">
+                        {template.is_built_in ? "Built-in" : "Uploaded"}
+                      </span>
+                    </div>
+                    {template.description ? (
+                      <p className="mt-2 text-sm leading-6 text-zinc-600">
+                        {template.description}
+                      </p>
+                    ) : null}
+                  </div>
+                  <button
+                    className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+                    disabled={creatingFromTemplateId === template.id}
+                    type="button"
+                    onClick={() => void handleCreateFromTemplate(template)}
+                  >
+                    {creatingFromTemplateId === template.id ? "Creating..." : "Use"}
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
       </section>
 
       <section className="rounded-md border border-zinc-200 bg-white p-5 shadow-sm">

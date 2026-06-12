@@ -2,6 +2,7 @@ import logging
 import uuid
 from pathlib import PurePath
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -9,18 +10,25 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import CurrentUser
 from app.db.session import get_session
+from app.papers.schemas import PaperCreate, PaperResponse
+from app.papers.service import create_paper_for_owner
 from app.storage.client import (
     ObjectStorageClient,
     ObjectStorageError,
     get_storage_client,
 )
-from app.templates.schemas import TemplateResponse
-from app.templates.service import create_template_for_owner, list_templates_for_user
+from app.templates.schemas import TemplatePaperCreate, TemplateResponse
+from app.templates.service import (
+    create_template_for_owner,
+    get_template_for_user,
+    list_templates_for_user,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/templates", tags=["templates"])
 
 MAX_TEMPLATE_BYTES = 5 * 1024 * 1024
+MAX_SEEDED_PAPER_SOURCE_BYTES = 1_000_000
 ALLOWED_TEMPLATE_EXTENSIONS = {".tex", ".cls", ".sty", ".bib"}
 
 
@@ -49,6 +57,13 @@ def _validate_filename(filename: str | None) -> tuple[str, str]:
             detail=f"Template file must use one of these extensions: {allowed}",
         )
     return clean_name, suffix
+
+
+def _template_not_found() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Template not found",
+    )
 
 
 @router.get("", response_model=list[TemplateResponse])
@@ -143,3 +158,73 @@ async def upload_template(
         ) from exc
 
     return TemplateResponse.model_validate(template)
+
+
+@router.post(
+    "/{template_id}/papers",
+    response_model=PaperResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_paper_from_template(
+    template_id: UUID,
+    payload: TemplatePaperCreate,
+    current_user: CurrentUser,
+    session: Annotated[Session, Depends(get_session)],
+    storage: Annotated[ObjectStorageClient, Depends(get_storage_client)],
+) -> PaperResponse:
+    try:
+        template = get_template_for_user(session, current_user.user.id, template_id)
+    except SQLAlchemyError as exc:
+        logger.exception("Template lookup failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not load template",
+        ) from exc
+    if template is None:
+        raise _template_not_found()
+
+    try:
+        source_bytes = storage.download_bytes(template.storage_key)
+    except ObjectStorageError as exc:
+        logger.exception("Template object download failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not load template source",
+        ) from exc
+
+    if len(source_bytes) > MAX_SEEDED_PAPER_SOURCE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Template source is too large for a paper",
+        )
+    try:
+        latex_source = source_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Template source must be UTF-8 text",
+        ) from exc
+
+    requested_title = payload.title.strip() if payload.title else ""
+    title = requested_title or template.name
+    try:
+        paper = create_paper_for_owner(
+            session,
+            current_user.user.id,
+            PaperCreate(
+                title=title,
+                latex_source=latex_source,
+                template_id=template.id,
+            ),
+        )
+        session.commit()
+        session.refresh(paper)
+    except SQLAlchemyError as exc:
+        session.rollback()
+        logger.exception("Paper creation from template failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not create paper from template",
+        ) from exc
+
+    return PaperResponse.model_validate(paper)
