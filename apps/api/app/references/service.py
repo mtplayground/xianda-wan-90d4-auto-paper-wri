@@ -21,6 +21,20 @@ def list_references_for_owner(session: Session, owner_id: UUID) -> list[Referenc
     return list(session.scalars(statement))
 
 
+def list_references_for_paper(
+    session: Session,
+    *,
+    owner_id: UUID,
+    paper_id: UUID,
+) -> list[Reference]:
+    statement = (
+        select(Reference)
+        .where(Reference.owner_id == owner_id, Reference.paper_id == paper_id)
+        .order_by(Reference.updated_at.desc(), Reference.created_at.desc())
+    )
+    return list(session.scalars(statement))
+
+
 def get_reference_for_owner(
     session: Session,
     owner_id: UUID,

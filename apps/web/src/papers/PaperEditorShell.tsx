@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { compilePaper, getCompileJob, getPaper, updatePaper } from "./api";
-import type { CompilationJob, Paper } from "./types";
+import {
+  compilePaper,
+  deleteReference,
+  getCompileJob,
+  getPaper,
+  listPaperReferences,
+  updatePaper,
+  uploadReferencePdf
+} from "./api";
+import type { CompilationJob, Paper, ReferenceItem } from "./types";
 
 const POLL_INTERVAL_MS = 1800;
 
@@ -37,6 +45,16 @@ function compileStatusLabel(job: CompilationJob | null): string {
     return "Ready";
   }
   return "Failed";
+}
+
+function metadataString(metadata: Record<string, unknown>, key: string): string | null {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function metadataNumber(metadata: Record<string, unknown>, key: string): number | null {
+  const value = metadata[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function EditorLoadingView() {
@@ -172,6 +190,194 @@ function PdfPreviewPanel({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ReferencePanel({ paperId }: { paperId: string }) {
+  const [references, setReferences] = useState<ReferenceItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  const [deletingReferenceId, setDeletingReferenceId] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setIsLoading(true);
+    setError(null);
+    void listPaperReferences(paperId, controller.signal)
+      .then(setReferences)
+      .catch((loadError: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setError(
+          loadError instanceof Error ? loadError.message : "Could not load references"
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      });
+    return () => {
+      controller.abort();
+    };
+  }, [paperId]);
+
+  async function handleUpload() {
+    if (!selectedFile || isUploading) {
+      return;
+    }
+    setIsUploading(true);
+    setError(null);
+    try {
+      const uploaded = await uploadReferencePdf(paperId, selectedFile, titleDraft);
+      setReferences((current) => [uploaded.reference, ...current]);
+      setSelectedFile(null);
+      setTitleDraft("");
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Could not upload reference"
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  async function handleDelete(referenceId: string) {
+    if (deletingReferenceId) {
+      return;
+    }
+    setDeletingReferenceId(referenceId);
+    setError(null);
+    try {
+      await deleteReference(referenceId);
+      setReferences((current) =>
+        current.filter((reference) => reference.id !== referenceId)
+      );
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Could not delete reference"
+      );
+    } finally {
+      setDeletingReferenceId(null);
+    }
+  }
+
+  return (
+    <section className="rounded-md border border-zinc-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-5 py-4">
+        <div>
+          <h2 className="text-base font-semibold text-zinc-950">References</h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            {isLoading
+              ? "Loading sources"
+              : `${references.length.toLocaleString()} linked to this paper`}
+          </p>
+        </div>
+        <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-700">
+          Library
+        </span>
+      </div>
+
+      <div className="grid gap-3 border-b border-zinc-200 p-5">
+        <input
+          aria-label="Reference title"
+          className="h-10 rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-teal-600"
+          placeholder="Reference title"
+          type="text"
+          value={titleDraft}
+          onChange={(event) => setTitleDraft(event.target.value)}
+        />
+        <input
+          aria-label="Reference PDF"
+          className="block w-full text-sm text-zinc-700 file:mr-3 file:h-10 file:rounded-md file:border-0 file:bg-zinc-950 file:px-3 file:text-sm file:font-semibold file:text-white hover:file:bg-zinc-800"
+          type="file"
+          accept="application/pdf,.pdf"
+          onChange={(event) =>
+            setSelectedFile(event.currentTarget.files?.item(0) ?? null)
+          }
+        />
+        <button
+          className="h-10 rounded-md bg-zinc-950 px-3 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+          disabled={!selectedFile || isUploading}
+          type="button"
+          onClick={() => void handleUpload()}
+        >
+          {isUploading ? "Uploading..." : "Upload PDF"}
+        </button>
+      </div>
+
+      {error ? (
+        <div className="border-b border-red-200 bg-red-50 px-5 py-3 text-sm text-red-900">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="max-h-[28rem] overflow-auto">
+        {isLoading ? (
+          <div className="p-5 text-sm text-zinc-500">Loading references</div>
+        ) : references.length === 0 ? (
+          <div className="p-5 text-sm leading-6 text-zinc-500">
+            No references linked yet.
+          </div>
+        ) : (
+          <ul className="divide-y divide-zinc-200">
+            {references.map((reference) => {
+              const originalFile = metadataString(
+                reference.metadata,
+                "original_filename"
+              );
+              const pageCount = metadataNumber(reference.metadata, "page_count");
+              const embeddingStatus =
+                metadataString(reference.metadata, "embedding_status") ?? "queued";
+              return (
+                <li className="grid gap-3 p-5" key={reference.id}>
+                  <div>
+                    <p className="text-sm font-semibold leading-5 text-zinc-950">
+                      {reference.title}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {originalFile ?? "PDF reference"}
+                      {pageCount ? ` - ${pageCount.toLocaleString()} pages` : ""}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-teal-100 px-2.5 py-1 text-xs font-semibold text-teal-800">
+                      {embeddingStatus}
+                    </span>
+                    {reference.source_url ? (
+                      <a
+                        className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-800 hover:bg-zinc-50"
+                        href={reference.source_url}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        Open PDF
+                      </a>
+                    ) : null}
+                    <button
+                      className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-red-300"
+                      disabled={deletingReferenceId === reference.id}
+                      type="button"
+                      onClick={() => void handleDelete(reference.id)}
+                    >
+                      {deletingReferenceId === reference.id ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -333,13 +539,16 @@ export function PaperEditorShell({ paperId }: { paperId: string }) {
           />
         </section>
 
-        <PdfPreviewPanel
-          compileError={compileError}
-          isStartingCompile={isStartingCompile}
-          job={compileJob}
-          paper={{ ...paper, latex_source: sourceDraft }}
-          onCompile={() => void handleCompile()}
-        />
+        <div className="grid gap-4">
+          <PdfPreviewPanel
+            compileError={compileError}
+            isStartingCompile={isStartingCompile}
+            job={compileJob}
+            paper={{ ...paper, latex_source: sourceDraft }}
+            onCompile={() => void handleCompile()}
+          />
+          <ReferencePanel paperId={paper.id} />
+        </div>
       </div>
     </div>
   );

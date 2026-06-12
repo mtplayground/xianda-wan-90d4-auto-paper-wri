@@ -3,6 +3,9 @@ import type {
   Paper,
   PaperCreatePayload,
   PaperUpdatePayload,
+  ReferenceChunk,
+  ReferenceItem,
+  ReferenceUploadResponse,
   Template
 } from "./types";
 
@@ -60,6 +63,61 @@ function isCompilationJob(value: unknown): value is CompilationJob {
     typeof candidate.updated_at === "string" &&
     (typeof candidate.started_at === "string" || candidate.started_at === null) &&
     (typeof candidate.finished_at === "string" || candidate.finished_at === null)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isReferenceItem(value: unknown): value is ReferenceItem {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    typeof value.id === "string" &&
+    typeof value.owner_id === "string" &&
+    (typeof value.paper_id === "string" || value.paper_id === null) &&
+    typeof value.title === "string" &&
+    Array.isArray(value.authors) &&
+    (typeof value.publication_year === "number" || value.publication_year === null) &&
+    (typeof value.venue === "string" || value.venue === null) &&
+    (typeof value.doi === "string" || value.doi === null) &&
+    (typeof value.url === "string" || value.url === null) &&
+    typeof value.source_type === "string" &&
+    (typeof value.source_identifier === "string" || value.source_identifier === null) &&
+    (typeof value.source_url === "string" || value.source_url === null) &&
+    (typeof value.abstract === "string" || value.abstract === null) &&
+    isRecord(value.metadata) &&
+    typeof value.created_at === "string" &&
+    typeof value.updated_at === "string"
+  );
+}
+
+function isReferenceChunk(value: unknown): value is ReferenceChunk {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    typeof value.id === "string" &&
+    typeof value.reference_id === "string" &&
+    typeof value.chunk_index === "number" &&
+    typeof value.content === "string" &&
+    (typeof value.token_count === "number" || value.token_count === null) &&
+    isRecord(value.metadata) &&
+    typeof value.created_at === "string"
+  );
+}
+
+function isReferenceUploadResponse(value: unknown): value is ReferenceUploadResponse {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    isReferenceItem(value.reference) &&
+    Array.isArray(value.chunks) &&
+    value.chunks.every(isReferenceChunk) &&
+    typeof value.extracted_text_chars === "number"
   );
 }
 
@@ -233,4 +291,61 @@ export async function listPaperCompileJobs(
     throw new Error("Compilation job list response had an unexpected shape");
   }
   return body;
+}
+
+export async function listPaperReferences(
+  paperId: string,
+  signal?: AbortSignal
+): Promise<ReferenceItem[]> {
+  const response = await fetch(`/api/references/by-paper/${paperId}`, {
+    credentials: "include",
+    headers: { Accept: "application/json" },
+    signal
+  });
+  if (!response.ok) {
+    throw new Error(`Reference list failed with ${response.status}`);
+  }
+  const body: unknown = await response.json();
+  if (!Array.isArray(body) || !body.every(isReferenceItem)) {
+    throw new Error("Reference list response had an unexpected shape");
+  }
+  return body;
+}
+
+export async function uploadReferencePdf(
+  paperId: string,
+  file: File,
+  title?: string
+): Promise<ReferenceUploadResponse> {
+  const formData = new FormData();
+  formData.set("file", file);
+  formData.set("paper_id", paperId);
+  if (title?.trim()) {
+    formData.set("title", title.trim());
+  }
+
+  const response = await fetch("/api/references/uploads/pdf", {
+    body: formData,
+    credentials: "include",
+    headers: { Accept: "application/json" },
+    method: "POST"
+  });
+  if (!response.ok) {
+    throw new Error(`Reference upload failed with ${response.status}`);
+  }
+  const body: unknown = await response.json();
+  if (!isReferenceUploadResponse(body)) {
+    throw new Error("Reference upload response had an unexpected shape");
+  }
+  return body;
+}
+
+export async function deleteReference(referenceId: string): Promise<void> {
+  const response = await fetch(`/api/references/${referenceId}`, {
+    credentials: "include",
+    method: "DELETE"
+  });
+  if (!response.ok) {
+    throw new Error(`Reference deletion failed with ${response.status}`);
+  }
 }
