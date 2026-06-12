@@ -17,6 +17,7 @@
     "format:web": "npm --workspace apps/web run format",
     "format:check:web": "npm --workspace apps/web run format:check",
     "lint:api": "python3 -m ruff check apps/api",
+    "test:api": "PYTHONPATH=apps/api python3 -m pytest apps/api/tests",
     "format:api": "python3 -m black apps/api",
     "format:check:api": "python3 -m black --check apps/api",
     "lint": "npm run lint:web && npm run lint:api",
