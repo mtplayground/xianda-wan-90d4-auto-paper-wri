@@ -139,6 +139,33 @@ class PaperReferenceSearchResponse(BaseModel):
     results: list[PaperReferenceSearchResult]
 
 
+class PaperCitationSuggestionRequest(BaseModel):
+    passage: str = Field(min_length=1, max_length=100_000)
+    instruction: str = Field(
+        default="Suggest citations and summarize why each source is relevant.",
+        max_length=4_000,
+    )
+    reference_query: str | None = Field(default=None, max_length=20_000)
+    reference_limit: int = Field(default=6, ge=1, le=20)
+    context_max_chars: int = Field(default=12_000, ge=500, le=30_000)
+
+    @field_validator("passage")
+    @classmethod
+    def passage_must_not_be_blank(cls, value: str) -> str:
+        passage = value.strip()
+        if not passage:
+            raise ValueError("Passage must not be blank")
+        return passage
+
+    @field_validator("instruction")
+    @classmethod
+    def citation_instruction_must_not_be_blank(cls, value: str) -> str:
+        instruction = value.strip()
+        if not instruction:
+            raise ValueError("Instruction must not be blank")
+        return instruction
+
+
 class PaperAiResponse(BaseModel):
     text: str
     model: str

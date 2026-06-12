@@ -15,6 +15,7 @@ from app.papers.schemas import (
     PaperAiContinueRequest,
     PaperAiPolishRequest,
     PaperAiResponse,
+    PaperCitationSuggestionRequest,
     PaperCreate,
     PaperReferenceSearchRequest,
     PaperReferenceSearchResponse,
@@ -317,6 +318,57 @@ def search_paper_references(
         query=payload.query,
         context=context,
         results=results,
+    )
+
+
+@router.post(
+    "/{paper_id}/references/suggestions",
+    response_model=PaperAiResponse,
+)
+def suggest_paper_citations(
+    paper_id: UUID,
+    payload: PaperCitationSuggestionRequest,
+    current_user: CurrentUser,
+    session: Annotated[Session, Depends(get_session)],
+) -> PaperAiResponse:
+    paper = _load_paper(
+        session,
+        owner_id=current_user.user.id,
+        paper_id=paper_id,
+    )
+    reference_query = payload.reference_query or payload.passage
+    try:
+        reference_context, references = _search_reference_context(
+            session,
+            owner_id=current_user.user.id,
+            paper_id=paper.id,
+            query=reference_query,
+            limit=payload.reference_limit,
+            max_chars=payload.context_max_chars,
+        )
+    except SQLAlchemyError as exc:
+        logger.exception("Reference retrieval for citation suggestions failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not retrieve reference context",
+        ) from exc
+    try:
+        prompt = render_prompt(
+            "suggest_citations",
+            passage=payload.passage,
+            reference_summaries=reference_context,
+            instruction=payload.instruction,
+        )
+    except PromptRenderError as exc:
+        logger.exception("Citation suggestion prompt rendering failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not prepare citation suggestion prompt",
+        ) from exc
+    return _complete_ai_prompt(
+        prompt,
+        reference_context=reference_context,
+        references=references,
     )
 
 
