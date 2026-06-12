@@ -1,6 +1,7 @@
 from logging.config import fileConfig
 
 from alembic import context
+from app.compilations import models as compilation_models  # noqa: F401
 from app.db.base import Base
 from app.db.session import sqlalchemy_database_url
 from app.papers import models as paper_models  # noqa: F401
