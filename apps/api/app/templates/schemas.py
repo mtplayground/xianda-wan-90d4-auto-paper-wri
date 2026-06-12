@@ -21,3 +21,7 @@ class TemplateResponse(BaseModel):
     storage_key: str
     created_at: datetime
     updated_at: datetime
+
+
+class TemplatePaperCreate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
