@@ -1,4 +1,6 @@
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -9,10 +11,19 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_settings
 from app.db.session import verify_database_connection
+from app.storage.client import get_storage_client
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
-app = FastAPI(title=settings.app_name)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    get_storage_client()
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
