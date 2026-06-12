@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     anthropic_base_url: str = "https://api.anthropic.com"
     claude_model: str | None = None
+    texlive_command: str = "pdflatex"
+    texlive_timeout_seconds: int = 45
+    texlive_max_runs: int = 2
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     model_config = SettingsConfigDict(
