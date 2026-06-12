@@ -13,6 +13,7 @@ import type {
   ReferenceUploadResponse,
   Template
 } from "./types";
+import { apiErrorFromResponse } from "../apiErrors";
 
 function isPaper(value: unknown): value is Paper {
   if (typeof value !== "object" || value === null) {
@@ -193,7 +194,7 @@ export async function listTemplates(signal?: AbortSignal): Promise<Template[]> {
     signal
   });
   if (!response.ok) {
-    throw new Error(`Template list failed with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not load templates");
   }
   const body: unknown = await response.json();
   if (!Array.isArray(body) || !body.every(isTemplate)) {
@@ -216,7 +217,7 @@ export async function createPaperFromTemplate(
     method: "POST"
   });
   if (!response.ok) {
-    throw new Error(`Template paper creation failed with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not create paper from template");
   }
   return parsePaperResponse(response);
 }
@@ -228,7 +229,7 @@ export async function listPapers(signal?: AbortSignal): Promise<Paper[]> {
     signal
   });
   if (!response.ok) {
-    throw new Error(`Paper list failed with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not load papers");
   }
   const body: unknown = await response.json();
   if (!Array.isArray(body) || !body.every(isPaper)) {
@@ -244,7 +245,7 @@ export async function getPaper(paperId: string, signal?: AbortSignal): Promise<P
     signal
   });
   if (!response.ok) {
-    throw new Error(`Paper lookup failed with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not load paper");
   }
   return parsePaperResponse(response);
 }
@@ -260,7 +261,7 @@ export async function createPaper(payload: PaperCreatePayload): Promise<Paper> {
     method: "POST"
   });
   if (!response.ok) {
-    throw new Error(`Paper creation failed with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not create paper");
   }
   return parsePaperResponse(response);
 }
@@ -279,7 +280,7 @@ export async function updatePaper(
     method: "PATCH"
   });
   if (!response.ok) {
-    throw new Error(`Paper update failed with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not save paper");
   }
   return parsePaperResponse(response);
 }
@@ -290,7 +291,7 @@ export async function deletePaper(paperId: string): Promise<void> {
     method: "DELETE"
   });
   if (!response.ok) {
-    throw new Error(`Paper deletion failed with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not delete paper");
   }
 }
 
@@ -301,7 +302,7 @@ export async function compilePaper(paperId: string): Promise<CompilationJob> {
     method: "POST"
   });
   if (!response.ok) {
-    throw new Error(`Paper compilation failed to start with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not start compilation");
   }
   return parseCompilationJobResponse(response);
 }
@@ -316,7 +317,7 @@ export async function getCompileJob(
     signal
   });
   if (!response.ok) {
-    throw new Error(`Compilation job lookup failed with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not refresh compilation status");
   }
   return parseCompilationJobResponse(response);
 }
@@ -331,7 +332,7 @@ export async function listPaperCompileJobs(
     signal
   });
   if (!response.ok) {
-    throw new Error(`Compilation job list failed with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not load compilation jobs");
   }
   const body: unknown = await response.json();
   if (!Array.isArray(body) || !body.every(isCompilationJob)) {
@@ -350,7 +351,7 @@ export async function listPaperReferences(
     signal
   });
   if (!response.ok) {
-    throw new Error(`Reference list failed with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not load references");
   }
   const body: unknown = await response.json();
   if (!Array.isArray(body) || !body.every(isReferenceItem)) {
@@ -378,7 +379,7 @@ export async function uploadReferencePdf(
     method: "POST"
   });
   if (!response.ok) {
-    throw new Error(`Reference upload failed with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not upload reference PDF");
   }
   const body: unknown = await response.json();
   if (!isReferenceUploadResponse(body)) {
@@ -393,7 +394,7 @@ export async function deleteReference(referenceId: string): Promise<void> {
     method: "DELETE"
   });
   if (!response.ok) {
-    throw new Error(`Reference deletion failed with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not delete reference");
   }
 }
 
@@ -411,7 +412,7 @@ export async function polishPaperText(
     method: "POST"
   });
   if (!response.ok) {
-    throw new Error(`AI polish failed with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not polish selected text");
   }
   return parseAiAssistantResponse(response);
 }
@@ -430,7 +431,7 @@ export async function continuePaperText(
     method: "POST"
   });
   if (!response.ok) {
-    throw new Error(`AI continuation failed with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not continue draft");
   }
   return parseAiAssistantResponse(response);
 }
@@ -449,7 +450,7 @@ export async function suggestPaperCitations(
     method: "POST"
   });
   if (!response.ok) {
-    throw new Error(`Citation suggestion failed with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not suggest citations");
   }
   return parseAiAssistantResponse(response);
 }

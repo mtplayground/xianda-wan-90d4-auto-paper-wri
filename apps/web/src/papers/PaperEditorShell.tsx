@@ -20,6 +20,7 @@ import type {
 } from "./types";
 
 const POLL_INTERVAL_MS = 1800;
+const MAX_REFERENCE_PDF_BYTES = 30 * 1024 * 1024;
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -63,6 +64,21 @@ function metadataString(metadata: Record<string, unknown>, key: string): string 
 function metadataNumber(metadata: Record<string, unknown>, key: string): number | null {
   const value = metadata[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function validateReferencePdf(file: File): string | null {
+  const isPdf =
+    file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  if (!isPdf) {
+    return "Reference upload must be a PDF file.";
+  }
+  if (file.size === 0) {
+    return "Reference PDF must not be empty.";
+  }
+  if (file.size > MAX_REFERENCE_PDF_BYTES) {
+    return "Reference PDF must be 30 MB or smaller.";
+  }
+  return null;
 }
 
 function surroundingText(source: string, start: number, end: number): string {
@@ -244,6 +260,11 @@ function ReferencePanel({ paperId }: { paperId: string }) {
     if (!selectedFile || isUploading) {
       return;
     }
+    const validationError = validateReferencePdf(selectedFile);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     setIsUploading(true);
     setError(null);
     try {
@@ -314,9 +335,11 @@ function ReferencePanel({ paperId }: { paperId: string }) {
           className="block w-full text-sm text-zinc-700 file:mr-3 file:h-10 file:rounded-md file:border-0 file:bg-zinc-950 file:px-3 file:text-sm file:font-semibold file:text-white hover:file:bg-zinc-800"
           type="file"
           accept="application/pdf,.pdf"
-          onChange={(event) =>
-            setSelectedFile(event.currentTarget.files?.item(0) ?? null)
-          }
+          onChange={(event) => {
+            const file = event.currentTarget.files?.item(0) ?? null;
+            setSelectedFile(file);
+            setError(file ? validateReferencePdf(file) : null);
+          }}
         />
         <button
           className="h-10 rounded-md bg-zinc-950 px-3 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
@@ -434,6 +457,7 @@ function AssistantPanel({
     }
     setIsRunning(true);
     setError(null);
+    setResult(null);
     try {
       if (action === "polish") {
         if (!hasSelection) {
@@ -747,6 +771,10 @@ export function PaperEditorShell({ paperId }: { paperId: string }) {
           setCompileJob(job);
           if (job.status === "failed") {
             setCompileError(job.error_message ?? "Compilation failed");
+          } else if (job.status === "succeeded" && !job.pdf_url) {
+            setCompileError("Compilation finished, but the PDF is not available.");
+          } else if (job.status === "succeeded") {
+            setCompileError(null);
           }
         })
         .catch((pollError: unknown) => {
