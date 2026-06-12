@@ -14,6 +14,12 @@ export type PaperCreatePayload = {
   template_id?: string | null;
 };
 
+export type PaperUpdatePayload = {
+  title?: string;
+  latex_source?: string;
+  template_id?: string | null;
+};
+
 export type Template = {
   id: string;
   owner_id: string | null;
