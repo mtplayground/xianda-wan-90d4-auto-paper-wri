@@ -81,6 +81,7 @@ PROMPT_TEMPLATES: dict[PromptName, PromptTemplate] = {
         user=(
             "Paper title:\n{paper_title}\n\n"
             "Draft context before the cursor:\n{draft_context}\n\n"
+            "Relevant reference context:\n{reference_context}\n\n"
             "Continuation length:\n{target_length}\n\n"
             "Author instruction:\n{instruction}"
         ),
@@ -96,6 +97,7 @@ PROMPT_TEMPLATES: dict[PromptName, PromptTemplate] = {
             "Edit operation:\n{operation}\n\n"
             "Author instruction:\n{instruction}\n\n"
             "Surrounding draft context:\n{surrounding_context}\n\n"
+            "Relevant reference context:\n{reference_context}\n\n"
             "Selected text to edit:\n{selected_text}"
         ),
     ),
