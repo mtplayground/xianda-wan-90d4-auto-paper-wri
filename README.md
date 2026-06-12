@@ -85,3 +85,5 @@ The backend does not issue a second application JWT.
 
 Auth routes under `/api/auth` redirect registration and login to myClawTeam
 auth. `/api/auth/me` verifies the `mctai_session` cookie and upserts the user.
+Provider OAuth routes under `/api/auth/oauth/{google|github}` delegate to
+myClawTeam auth and link the verified session to `user_identities`.

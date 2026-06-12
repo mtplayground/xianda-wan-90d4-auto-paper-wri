@@ -13,7 +13,12 @@ from app.auth.session import verify_mctai_session_cookie
 from app.config import get_settings
 from app.db.session import get_session
 from app.users.models import User
-from app.users.service import UserUpsertResult, upsert_user_from_mctai_claims
+from app.users.service import (
+    OAUTH_IDENTITY_PROVIDERS,
+    UserUpsertResult,
+    link_oauth_identity_from_mctai_claims,
+    upsert_user_from_mctai_claims,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -45,9 +50,33 @@ def _safe_return_path(return_to: str | None) -> str:
     return return_to
 
 
+def _frontend_url(request: Request, return_to: str | None = None) -> str:
+    return f"{_frontend_base_url(request)}{_safe_return_path(return_to)}"
+
+
+def _frontend_url_with_query(
+    request: Request,
+    return_to: str | None,
+    query_params: dict[str, str],
+) -> str:
+    frontend_url = _frontend_url(request, return_to)
+    separator = "&" if "?" in frontend_url else "?"
+    return f"{frontend_url}{separator}{urlencode(query_params)}"
+
+
+def _validate_oauth_provider(provider: str) -> str:
+    provider_name = provider.strip().lower()
+    if provider_name not in OAUTH_IDENTITY_PROVIDERS:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unsupported OAuth provider",
+        )
+    return provider_name
+
+
 def build_mctai_login_url(request: Request, return_to: str | None = None) -> str:
     auth_config = get_settings().require_mctai_auth()
-    frontend_url = f"{_frontend_base_url(request)}{_safe_return_path(return_to)}"
+    frontend_url = _frontend_url(request, return_to)
     query = urlencode(
         {
             "app_token": auth_config.app_token,
@@ -101,6 +130,75 @@ def register_post(request: Request, return_to: str | None = None) -> RedirectRes
         request,
         return_to,
         status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.get("/oauth/{provider}/redirect", include_in_schema=False)
+def oauth_redirect(
+    provider: str,
+    request: Request,
+    return_to: str | None = None,
+) -> RedirectResponse:
+    _validate_oauth_provider(provider)
+    return _redirect_to_mctai_login(
+        request,
+        return_to,
+        status.HTTP_307_TEMPORARY_REDIRECT,
+    )
+
+
+@router.post("/oauth/{provider}/redirect", include_in_schema=False)
+def oauth_redirect_post(
+    provider: str,
+    request: Request,
+    return_to: str | None = None,
+) -> RedirectResponse:
+    _validate_oauth_provider(provider)
+    return _redirect_to_mctai_login(
+        request,
+        return_to,
+        status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.get("/oauth/{provider}/callback", include_in_schema=False)
+def oauth_callback(
+    provider: str,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    return_to: str | None = None,
+) -> RedirectResponse:
+    provider_name = _validate_oauth_provider(provider)
+    claims = verify_mctai_session_cookie(request.cookies)
+    if claims is None:
+        return _redirect_to_mctai_login(
+            request,
+            return_to,
+            status.HTTP_307_TEMPORARY_REDIRECT,
+        )
+    try:
+        link_oauth_identity_from_mctai_claims(session, claims, provider_name)
+        session.commit()
+    except SQLAlchemyError as exc:
+        session.rollback()
+        logger.exception("OAuth identity link failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not link OAuth identity",
+        ) from exc
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    return RedirectResponse(
+        _frontend_url_with_query(
+            request,
+            return_to,
+            {"auth": "linked", "provider": provider_name},
+        ),
+        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 
