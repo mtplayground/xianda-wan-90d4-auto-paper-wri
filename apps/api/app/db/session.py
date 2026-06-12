@@ -9,9 +9,7 @@ from app.config import get_settings
 
 
 def sqlalchemy_database_url() -> str:
-    database_url = get_settings().database_url
-    if not database_url:
-        raise RuntimeError("DATABASE_URL environment variable is required")
+    database_url = get_settings().require_database_url()
     if database_url.startswith("postgres://"):
         return database_url.replace("postgres://", "postgresql+psycopg://", 1)
     if database_url.startswith("postgresql://"):

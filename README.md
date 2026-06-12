@@ -26,6 +26,15 @@ source .venv/bin/activate
 python3 -m pip install -r requirements-dev.txt
 ```
 
+Create local environment variables from the documented example:
+
+```bash
+cp .env.example .env
+```
+
+Use the provisioned secret values for real deployments; never commit `.env` or
+`.env.production`.
+
 Run the API:
 
 ```bash
@@ -63,7 +72,6 @@ The initial migration enables the PostgreSQL `vector` extension. The configured
 database role must have permission to create extensions, or the extension must
 already be installed by the database administrator.
 
-Object storage uses the pre-provisioned S3-compatible environment variables:
-`S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`, `S3_PREFIX`,
-`S3_ENDPOINT`, `S3_REGION`, and `S3_FORCE_PATH_STYLE`. All object operations
-prepend `S3_PREFIX` to relative keys before calling S3.
+Object storage uses the pre-provisioned S3-compatible environment variables
+documented in `.env.example`. All object operations prepend `S3_PREFIX` to
+relative keys before calling S3.
