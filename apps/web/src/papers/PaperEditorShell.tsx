@@ -1,15 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   compilePaper,
+  continuePaperText,
   deleteReference,
   getCompileJob,
   getPaper,
   listPaperReferences,
+  polishPaperText,
+  suggestPaperCitations,
   updatePaper,
   uploadReferencePdf
 } from "./api";
-import type { CompilationJob, Paper, ReferenceItem } from "./types";
+import type {
+  AiAssistantResponse,
+  CompilationJob,
+  Paper,
+  ReferenceItem
+} from "./types";
 
 const POLL_INTERVAL_MS = 1800;
 
@@ -55,6 +63,12 @@ function metadataString(metadata: Record<string, unknown>, key: string): string 
 function metadataNumber(metadata: Record<string, unknown>, key: string): number | null {
   const value = metadata[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function surroundingText(source: string, start: number, end: number): string {
+  const contextStart = Math.max(0, start - 5000);
+  const contextEnd = Math.min(source.length, end + 5000);
+  return source.slice(contextStart, contextEnd);
 }
 
 function EditorLoadingView() {
@@ -381,14 +395,303 @@ function ReferencePanel({ paperId }: { paperId: string }) {
   );
 }
 
+type AssistantAction = "polish" | "continue" | "cite";
+
+function AssistantPanel({
+  cursorIndex,
+  onInsert,
+  paperId,
+  selectedText,
+  selectionEnd,
+  selectionStart,
+  sourceDraft
+}: {
+  cursorIndex: number;
+  onInsert: (start: number, end: number, text: string) => void;
+  paperId: string;
+  selectedText: string;
+  selectionEnd: number;
+  selectionStart: number;
+  sourceDraft: string;
+}) {
+  const [action, setAction] = useState<AssistantAction>("polish");
+  const [instruction, setInstruction] = useState("");
+  const [referenceQuery, setReferenceQuery] = useState("");
+  const [targetLength, setTargetLength] = useState<"short" | "medium" | "long">(
+    "medium"
+  );
+  const [result, setResult] = useState<AiAssistantResponse | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const hasSelection = selectedText.trim().length > 0;
+  const actionLabel =
+    action === "polish" ? "Polish" : action === "continue" ? "Continue" : "Cite";
+
+  async function runAssistant() {
+    if (isRunning) {
+      return;
+    }
+    setIsRunning(true);
+    setError(null);
+    try {
+      if (action === "polish") {
+        if (!hasSelection) {
+          throw new Error("Select text in the editor before polishing");
+        }
+        const response = await polishPaperText(paperId, {
+          selected_text: selectedText,
+          surrounding_context: surroundingText(
+            sourceDraft,
+            selectionStart,
+            selectionEnd
+          ),
+          instruction: instruction.trim() || undefined,
+          operation: "polish",
+          reference_query: referenceQuery.trim() || undefined,
+          reference_limit: 5
+        });
+        setResult(response);
+        return;
+      }
+
+      if (action === "continue") {
+        const draftContext = sourceDraft.slice(0, cursorIndex).trim();
+        if (!draftContext) {
+          throw new Error("Place the cursor after some draft text before continuing");
+        }
+        const response = await continuePaperText(paperId, {
+          draft_context: draftContext,
+          instruction: instruction.trim() || undefined,
+          target_length: targetLength,
+          reference_query: referenceQuery.trim() || undefined,
+          reference_limit: 5
+        });
+        setResult(response);
+        return;
+      }
+
+      const passage = (
+        hasSelection
+          ? selectedText
+          : surroundingText(sourceDraft, cursorIndex, cursorIndex)
+      ).trim();
+      if (!passage) {
+        throw new Error("Select a passage or place the cursor near draft text");
+      }
+      const response = await suggestPaperCitations(paperId, {
+        passage,
+        instruction: instruction.trim() || undefined,
+        reference_query: referenceQuery.trim() || undefined,
+        reference_limit: 6,
+        context_max_chars: 12000
+      });
+      setResult(response);
+    } catch (assistantError) {
+      setError(
+        assistantError instanceof Error
+          ? assistantError.message
+          : "AI assistant request failed"
+      );
+    } finally {
+      setIsRunning(false);
+    }
+  }
+
+  function insertAtCursor() {
+    if (!result) {
+      return;
+    }
+    onInsert(cursorIndex, cursorIndex, result.text);
+  }
+
+  function replaceSelection() {
+    if (!result || !hasSelection) {
+      return;
+    }
+    onInsert(selectionStart, selectionEnd, result.text);
+  }
+
+  function appendToDraft() {
+    if (!result) {
+      return;
+    }
+    const separator =
+      sourceDraft.endsWith("\n") || sourceDraft.length === 0 ? "" : "\n\n";
+    onInsert(sourceDraft.length, sourceDraft.length, `${separator}${result.text}`);
+  }
+
+  return (
+    <section className="rounded-md border border-zinc-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-5 py-4">
+        <div>
+          <h2 className="text-base font-semibold text-zinc-950">AI assistant</h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            {hasSelection
+              ? `${selectedText.length.toLocaleString()} selected characters`
+              : `Cursor at ${cursorIndex.toLocaleString()}`}
+          </p>
+        </div>
+        <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-700">
+          Draft tools
+        </span>
+      </div>
+
+      <div className="grid gap-4 p-5">
+        <div className="grid grid-cols-3 overflow-hidden rounded-md border border-zinc-300">
+          {(["polish", "continue", "cite"] as const).map((value) => (
+            <button
+              className={[
+                "h-10 text-sm font-semibold transition",
+                action === value
+                  ? "bg-zinc-950 text-white"
+                  : "bg-white text-zinc-700 hover:bg-zinc-50"
+              ].join(" ")}
+              key={value}
+              type="button"
+              onClick={() => setAction(value)}
+            >
+              {value === "polish"
+                ? "Polish"
+                : value === "continue"
+                  ? "Continue"
+                  : "Cite"}
+            </button>
+          ))}
+        </div>
+
+        {action === "continue" ? (
+          <label className="grid gap-2 text-sm font-medium text-zinc-700">
+            Length
+            <select
+              className="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm outline-none focus:border-teal-600"
+              value={targetLength}
+              onChange={(event) =>
+                setTargetLength(event.target.value as "short" | "medium" | "long")
+              }
+            >
+              <option value="short">Short</option>
+              <option value="medium">Medium</option>
+              <option value="long">Long</option>
+            </select>
+          </label>
+        ) : null}
+
+        <label className="grid gap-2 text-sm font-medium text-zinc-700">
+          Instruction
+          <textarea
+            className="min-h-20 resize-y rounded-md border border-zinc-300 p-3 text-sm leading-5 outline-none focus:border-teal-600"
+            placeholder={
+              action === "polish"
+                ? "Tighten the prose and keep LaTeX commands intact"
+                : action === "continue"
+                  ? "Continue with methods details"
+                  : "Prioritize citations that support this claim"
+            }
+            value={instruction}
+            onChange={(event) => setInstruction(event.target.value)}
+          />
+        </label>
+
+        <label className="grid gap-2 text-sm font-medium text-zinc-700">
+          Reference query
+          <input
+            className="h-10 rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-teal-600"
+            placeholder="Optional search terms for references"
+            type="text"
+            value={referenceQuery}
+            onChange={(event) => setReferenceQuery(event.target.value)}
+          />
+        </label>
+
+        <button
+          className="h-10 rounded-md bg-zinc-950 px-3 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+          disabled={isRunning || (action === "polish" && !hasSelection)}
+          type="button"
+          onClick={() => void runAssistant()}
+        >
+          {isRunning ? "Working..." : `Run ${actionLabel}`}
+        </button>
+      </div>
+
+      {error ? (
+        <div className="border-t border-red-200 bg-red-50 px-5 py-3 text-sm text-red-900">
+          {error}
+        </div>
+      ) : null}
+
+      {result ? (
+        <div className="border-t border-zinc-200">
+          <div className="grid gap-3 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-zinc-950">Result</p>
+              <span className="text-xs text-zinc-500">{result.model}</span>
+            </div>
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-md border border-zinc-200 bg-zinc-50 p-3 font-mono text-xs leading-5 text-zinc-900">
+              {result.text}
+            </pre>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="rounded-md bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
+                disabled={!hasSelection}
+                type="button"
+                onClick={replaceSelection}
+              >
+                Replace selection
+              </button>
+              <button
+                className="rounded-md border border-zinc-300 px-3 py-2 text-xs font-semibold text-zinc-800 hover:bg-zinc-50"
+                type="button"
+                onClick={insertAtCursor}
+              >
+                Insert at cursor
+              </button>
+              <button
+                className="rounded-md border border-zinc-300 px-3 py-2 text-xs font-semibold text-zinc-800 hover:bg-zinc-50"
+                type="button"
+                onClick={appendToDraft}
+              >
+                Append
+              </button>
+            </div>
+          </div>
+
+          {result.references.length > 0 ? (
+            <div className="border-t border-zinc-200 p-5">
+              <p className="text-sm font-semibold text-zinc-950">Reference matches</p>
+              <ul className="mt-3 grid gap-3">
+                {result.references.slice(0, 4).map((reference) => (
+                  <li
+                    className="rounded-md border border-zinc-200 p-3 text-xs leading-5 text-zinc-600"
+                    key={reference.chunk_id}
+                  >
+                    <p className="font-semibold text-zinc-900">
+                      {reference.reference_title}
+                    </p>
+                    <p className="mt-1">
+                      Chunk {reference.chunk_index} - score {reference.score.toFixed(3)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function PaperEditorShell({ paperId }: { paperId: string }) {
   const [paper, setPaper] = useState<Paper | null>(null);
   const [sourceDraft, setSourceDraft] = useState("");
+  const [selectionRange, setSelectionRange] = useState({ end: 0, start: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [isStartingCompile, setIsStartingCompile] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [compileError, setCompileError] = useState<string | null>(null);
   const [compileJob, setCompileJob] = useState<CompilationJob | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -398,6 +701,7 @@ export function PaperEditorShell({ paperId }: { paperId: string }) {
       .then((loadedPaper) => {
         setPaper(loadedPaper);
         setSourceDraft(loadedPaper.latex_source);
+        setSelectionRange({ end: 0, start: 0 });
       })
       .catch((loadError: unknown) => {
         if (controller.signal.aborted) {
@@ -424,6 +728,8 @@ export function PaperEditorShell({ paperId }: { paperId: string }) {
     }),
     [sourceDraft]
   );
+
+  const selectedText = sourceDraft.slice(selectionRange.start, selectionRange.end);
 
   useEffect(() => {
     const activeJob = compileJob;
@@ -484,6 +790,34 @@ export function PaperEditorShell({ paperId }: { paperId: string }) {
     }
   }
 
+  function updateSelectionFromTextarea() {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+    setSelectionRange({
+      end: textarea.selectionEnd,
+      start: textarea.selectionStart
+    });
+  }
+
+  function insertAssistantText(start: number, end: number, text: string) {
+    setSourceDraft((current) => {
+      const next = `${current.slice(0, start)}${text}${current.slice(end)}`;
+      return next;
+    });
+    const cursor = start + text.length;
+    setSelectionRange({ end: cursor, start: cursor });
+    window.requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) {
+        return;
+      }
+      textarea.focus();
+      textarea.setSelectionRange(cursor, cursor);
+    });
+  }
+
   if (isLoading) {
     return <EditorLoadingView />;
   }
@@ -531,15 +865,31 @@ export function PaperEditorShell({ paperId }: { paperId: string }) {
             </span>
           </div>
           <textarea
+            ref={textareaRef}
             aria-label="LaTeX source"
             className="min-h-[30rem] flex-1 resize-none border-0 bg-white p-5 font-mono text-sm leading-6 text-zinc-900 outline-none"
             spellCheck={false}
             value={sourceDraft}
-            onChange={(event) => setSourceDraft(event.target.value)}
+            onChange={(event) => {
+              setSourceDraft(event.target.value);
+              window.requestAnimationFrame(updateSelectionFromTextarea);
+            }}
+            onClick={updateSelectionFromTextarea}
+            onKeyUp={updateSelectionFromTextarea}
+            onSelect={updateSelectionFromTextarea}
           />
         </section>
 
         <div className="grid gap-4">
+          <AssistantPanel
+            cursorIndex={selectionRange.end}
+            paperId={paper.id}
+            selectedText={selectedText}
+            selectionEnd={selectionRange.end}
+            selectionStart={selectionRange.start}
+            sourceDraft={sourceDraft}
+            onInsert={insertAssistantText}
+          />
           <PdfPreviewPanel
             compileError={compileError}
             isStartingCompile={isStartingCompile}
