@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.auth.routes import router as auth_router
+from app.compilations.routes import router as compilations_router
 from app.config import get_settings
 from app.db.session import get_session_factory, verify_database_connection
 from app.papers.routes import router as papers_router
@@ -44,6 +45,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(compilations_router)
 app.include_router(papers_router)
 app.include_router(templates_router)
 
