@@ -1,4 +1,4 @@
-import type { Paper, PaperCreatePayload, Template } from "./types";
+import type { CompilationJob, Paper, PaperCreatePayload, Template } from "./types";
 
 function isPaper(value: unknown): value is Paper {
   if (typeof value !== "object" || value === null) {
@@ -35,10 +35,42 @@ function isTemplate(value: unknown): value is Template {
   );
 }
 
+function isCompilationJob(value: unknown): value is CompilationJob {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.owner_id === "string" &&
+    typeof candidate.paper_id === "string" &&
+    ["pending", "running", "succeeded", "failed"].includes(String(candidate.status)) &&
+    (typeof candidate.pdf_storage_key === "string" ||
+      candidate.pdf_storage_key === null) &&
+    (typeof candidate.pdf_url === "string" || candidate.pdf_url === null) &&
+    (typeof candidate.log_text === "string" || candidate.log_text === null) &&
+    (typeof candidate.error_message === "string" || candidate.error_message === null) &&
+    typeof candidate.created_at === "string" &&
+    typeof candidate.updated_at === "string" &&
+    (typeof candidate.started_at === "string" || candidate.started_at === null) &&
+    (typeof candidate.finished_at === "string" || candidate.finished_at === null)
+  );
+}
+
 async function parsePaperResponse(response: Response): Promise<Paper> {
   const body: unknown = await response.json();
   if (!isPaper(body)) {
     throw new Error("Paper response had an unexpected shape");
+  }
+  return body;
+}
+
+async function parseCompilationJobResponse(
+  response: Response
+): Promise<CompilationJob> {
+  const body: unknown = await response.json();
+  if (!isCompilationJob(body)) {
+    throw new Error("Compilation job response had an unexpected shape");
   }
   return body;
 }
@@ -130,4 +162,50 @@ export async function deletePaper(paperId: string): Promise<void> {
   if (!response.ok) {
     throw new Error(`Paper deletion failed with ${response.status}`);
   }
+}
+
+export async function compilePaper(paperId: string): Promise<CompilationJob> {
+  const response = await fetch(`/api/papers/${paperId}/compile`, {
+    credentials: "include",
+    headers: { Accept: "application/json" },
+    method: "POST"
+  });
+  if (!response.ok) {
+    throw new Error(`Paper compilation failed to start with ${response.status}`);
+  }
+  return parseCompilationJobResponse(response);
+}
+
+export async function getCompileJob(
+  jobId: string,
+  signal?: AbortSignal
+): Promise<CompilationJob> {
+  const response = await fetch(`/api/compile-jobs/${jobId}`, {
+    credentials: "include",
+    headers: { Accept: "application/json" },
+    signal
+  });
+  if (!response.ok) {
+    throw new Error(`Compilation job lookup failed with ${response.status}`);
+  }
+  return parseCompilationJobResponse(response);
+}
+
+export async function listPaperCompileJobs(
+  paperId: string,
+  signal?: AbortSignal
+): Promise<CompilationJob[]> {
+  const response = await fetch(`/api/papers/${paperId}/compile-jobs`, {
+    credentials: "include",
+    headers: { Accept: "application/json" },
+    signal
+  });
+  if (!response.ok) {
+    throw new Error(`Compilation job list failed with ${response.status}`);
+  }
+  const body: unknown = await response.json();
+  if (!Array.isArray(body) || !body.every(isCompilationJob)) {
+    throw new Error("Compilation job list response had an unexpected shape");
+  }
+  return body;
 }
