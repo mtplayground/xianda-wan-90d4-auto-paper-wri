@@ -40,6 +40,18 @@ export async function listPapers(signal?: AbortSignal): Promise<Paper[]> {
   return body;
 }
 
+export async function getPaper(paperId: string, signal?: AbortSignal): Promise<Paper> {
+  const response = await fetch(`/api/papers/${paperId}`, {
+    credentials: "include",
+    headers: { Accept: "application/json" },
+    signal
+  });
+  if (!response.ok) {
+    throw new Error(`Paper lookup failed with ${response.status}`);
+  }
+  return parsePaperResponse(response);
+}
+
 export async function createPaper(payload: PaperCreatePayload): Promise<Paper> {
   const response = await fetch("/api/papers", {
     body: JSON.stringify(payload),
