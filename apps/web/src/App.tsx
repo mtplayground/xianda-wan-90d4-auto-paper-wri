@@ -1,5 +1,6 @@
 import type { AuthProviderName, AuthUser } from "./auth/types";
 import { useAuth } from "./auth/useAuth";
+import { PaperDashboard } from "./papers/PaperDashboard";
 
 const providerLabels: Record<AuthProviderName, string> = {
   google: "Google",
@@ -265,44 +266,7 @@ function DashboardPage() {
           </span>
         </div>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
-          {["Papers", "Templates", "References"].map((label) => (
-            <div
-              className="rounded-md border border-zinc-200 bg-white p-5 shadow-sm"
-              key={label}
-            >
-              <p className="text-sm font-semibold text-zinc-950">{label}</p>
-              <p className="mt-4 text-3xl font-semibold text-zinc-950">0</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-          <section className="rounded-md border border-zinc-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-semibold tracking-normal">
-              Workspace activity
-            </h2>
-            <div className="mt-5 space-y-3">
-              <div className="flex items-center justify-between rounded-md border border-zinc-200 px-4 py-3">
-                <span className="text-sm font-medium text-zinc-700">Account email</span>
-                <span className="text-sm text-zinc-950">{user.email}</span>
-              </div>
-              <div className="flex items-center justify-between rounded-md border border-zinc-200 px-4 py-3">
-                <span className="text-sm font-medium text-zinc-700">Email status</span>
-                <span className="text-sm text-zinc-950">
-                  {user.email_verified ? "Verified" : "Unverified"}
-                </span>
-              </div>
-            </div>
-          </section>
-          <section className="rounded-md border border-zinc-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-semibold tracking-normal">Account</h2>
-            <p className="mt-5 text-sm leading-7 text-zinc-700">
-              Your workspace is ready for papers, templates, references, and assisted
-              drafting.
-            </p>
-          </section>
-        </div>
+        <PaperDashboard />
       </section>
     </main>
   );
