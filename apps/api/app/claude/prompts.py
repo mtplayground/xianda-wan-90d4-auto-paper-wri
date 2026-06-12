@@ -129,12 +129,16 @@ PROMPT_TEMPLATES: dict[PromptName, PromptTemplate] = {
         name="suggest_citations",
         system=(
             "You recommend citations from a provided reference library. Use only "
-            "the references in the prompt and do not invent bibliographic details."
+            "the references in the prompt and do not invent bibliographic details. "
+            "Summarize each recommended reference's relevance before suggesting "
+            "how it should be cited."
         ),
         user=(
             "Manuscript passage:\n{passage}\n\n"
             "Available references:\n{reference_summaries}\n\n"
-            "Return citation suggestions with a short rationale for each."
+            "Author instruction:\n{instruction}\n\n"
+            "Return concise reference summaries, citation suggestions, and a short "
+            "rationale for each suggestion."
         ),
     ),
 }
