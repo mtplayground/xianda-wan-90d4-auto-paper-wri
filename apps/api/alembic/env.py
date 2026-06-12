@@ -4,6 +4,7 @@ from alembic import context
 from app.db.base import Base
 from app.db.session import sqlalchemy_database_url
 from app.papers import models as paper_models  # noqa: F401
+from app.templates import models as template_models  # noqa: F401
 from app.users import models as user_models  # noqa: F401
 from sqlalchemy import engine_from_config, pool
 

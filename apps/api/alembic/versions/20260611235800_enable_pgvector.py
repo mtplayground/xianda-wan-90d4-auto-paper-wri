@@ -16,8 +16,30 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            CREATE EXTENSION IF NOT EXISTS vector;
+        EXCEPTION
+            WHEN insufficient_privilege THEN
+                RAISE NOTICE 'Skipping vector extension creation';
+        END
+        $$;
+        """
+    )
 
 
 def downgrade() -> None:
-    op.execute("DROP EXTENSION IF EXISTS vector")
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            DROP EXTENSION IF EXISTS vector;
+        EXCEPTION
+            WHEN insufficient_privilege THEN
+                RAISE NOTICE 'Skipping vector extension drop: insufficient privilege';
+        END
+        $$;
+        """
+    )

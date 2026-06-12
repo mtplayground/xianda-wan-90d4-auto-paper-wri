@@ -11,6 +11,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.papers.models import Paper
+    from app.templates.models import Template
 
 
 class User(Base):
@@ -58,6 +59,11 @@ class User(Base):
         passive_deletes=True,
     )
     papers: Mapped[list["Paper"]] = relationship(
+        back_populates="owner",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    templates: Mapped[list["Template"]] = relationship(
         back_populates="owner",
         cascade="all, delete-orphan",
         passive_deletes=True,
