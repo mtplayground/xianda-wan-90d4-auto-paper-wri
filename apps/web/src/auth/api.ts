@@ -1,4 +1,5 @@
 import type { AuthUser } from "./types";
+import { apiErrorFromResponse } from "../apiErrors";
 
 function isAuthUser(value: unknown): value is AuthUser {
   if (typeof value !== "object" || value === null) {
@@ -27,7 +28,7 @@ export async function fetchCurrentUser(signal?: AbortSignal): Promise<AuthUser |
   }
 
   if (!response.ok) {
-    throw new Error(`Auth check failed with ${response.status}`);
+    throw await apiErrorFromResponse(response, "Could not verify authentication");
   }
 
   const body: unknown = await response.json();
