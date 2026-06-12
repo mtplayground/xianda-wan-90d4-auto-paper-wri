@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.db.base import Base
+from app.templates.models import Template
 from app.users.models import User
 
 
@@ -31,6 +32,7 @@ class Paper(Base):
     latex_source: Mapped[str] = mapped_column(Text, nullable=False)
     template_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
+        ForeignKey("templates.id", ondelete="SET NULL"),
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -46,3 +48,4 @@ class Paper(Base):
     )
 
     owner: Mapped[User] = relationship(back_populates="papers")
+    template: Mapped[Template | None] = relationship()
