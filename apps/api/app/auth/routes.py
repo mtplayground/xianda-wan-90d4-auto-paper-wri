@@ -9,15 +9,14 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import CurrentUser, CurrentUserContext
 from app.auth.session import verify_mctai_session_cookie
 from app.config import get_settings
 from app.db.session import get_session
 from app.users.models import User
 from app.users.service import (
     OAUTH_IDENTITY_PROVIDERS,
-    UserUpsertResult,
     link_oauth_identity_from_mctai_claims,
-    upsert_user_from_mctai_claims,
 )
 
 logger = logging.getLogger(__name__)
@@ -202,37 +201,18 @@ def oauth_callback(
     )
 
 
-def _to_response(result: UserUpsertResult) -> AuthenticatedUserResponse:
-    user: User = result.user
+def _to_response(current_user: CurrentUserContext) -> AuthenticatedUserResponse:
+    user: User = current_user.user
     return AuthenticatedUserResponse(
         id=user.id,
         email=user.email,
         email_verified=user.email_verified,
         display_name=user.display_name,
         picture_url=user.picture_url,
-        created=result.created,
+        created=current_user.created,
     )
 
 
 @router.get("/me", response_model=AuthenticatedUserResponse)
-def current_user(
-    request: Request,
-    session: Annotated[Session, Depends(get_session)],
-) -> AuthenticatedUserResponse:
-    claims = verify_mctai_session_cookie(request.cookies)
-    if claims is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Not signed in"
-        )
-    try:
-        result = upsert_user_from_mctai_claims(session, claims)
-        session.commit()
-        session.refresh(result.user)
-    except SQLAlchemyError as exc:
-        session.rollback()
-        logger.exception("Authenticated user upsert failed")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not persist authenticated user",
-        ) from exc
-    return _to_response(result)
+def current_user(current_user: CurrentUser) -> AuthenticatedUserResponse:
+    return _to_response(current_user)

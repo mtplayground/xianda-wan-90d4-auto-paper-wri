@@ -87,3 +87,5 @@ Auth routes under `/api/auth` redirect registration and login to myClawTeam
 auth. `/api/auth/me` verifies the `mctai_session` cookie and upserts the user.
 Provider OAuth routes under `/api/auth/oauth/{google|github}` delegate to
 myClawTeam auth and link the verified session to `user_identities`.
+Protected API routes should depend on `app.auth.dependencies.CurrentUser`,
+which injects the verified user context and stores it on `request.state`.
