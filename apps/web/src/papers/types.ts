@@ -46,3 +46,38 @@ export type CompilationJob = {
   started_at: string | null;
   finished_at: string | null;
 };
+
+export type ReferenceItem = {
+  id: string;
+  owner_id: string;
+  paper_id: string | null;
+  title: string;
+  authors: Array<Record<string, unknown>>;
+  publication_year: number | null;
+  venue: string | null;
+  doi: string | null;
+  url: string | null;
+  source_type: string;
+  source_identifier: string | null;
+  source_url: string | null;
+  abstract: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ReferenceChunk = {
+  id: string;
+  reference_id: string;
+  chunk_index: number;
+  content: string;
+  token_count: number | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ReferenceUploadResponse = {
+  reference: ReferenceItem;
+  chunks: ReferenceChunk[];
+  extracted_text_chars: number;
+};
