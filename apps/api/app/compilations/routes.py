@@ -55,9 +55,15 @@ def _to_response(
 
 
 @router.post(
+    "/api/papers/{paper_id}/compile",
+    response_model=CompilationJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+@router.post(
     "/api/papers/{paper_id}/compilation-jobs",
     response_model=CompilationJobResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    include_in_schema=False,
 )
 def create_paper_compilation_job(
     paper_id: UUID,
@@ -92,8 +98,13 @@ def create_paper_compilation_job(
 
 
 @router.get(
+    "/api/papers/{paper_id}/compile-jobs",
+    response_model=list[CompilationJobResponse],
+)
+@router.get(
     "/api/papers/{paper_id}/compilation-jobs",
     response_model=list[CompilationJobResponse],
+    include_in_schema=False,
 )
 def list_paper_compilation_jobs(
     paper_id: UUID,
@@ -122,8 +133,13 @@ def list_paper_compilation_jobs(
 
 
 @router.get(
+    "/api/compile-jobs/{job_id}",
+    response_model=CompilationJobResponse,
+)
+@router.get(
     "/api/compilation-jobs/{job_id}",
     response_model=CompilationJobResponse,
+    include_in_schema=False,
 )
 def get_compilation_job(
     job_id: UUID,
