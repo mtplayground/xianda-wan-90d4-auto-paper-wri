@@ -1,6 +1,7 @@
 # xianda-wan-90d4-auto-paper-wri
 
-Monorepo scaffold with a React + Tailwind SPA and a FastAPI backend.
+LaTeX paper drafting app with templates, reference upload, AI assistance,
+semantic retrieval, and PDF compilation.
 
 ## Structure
 
@@ -56,21 +57,22 @@ npm run build
 Run quality checks:
 
 ```bash
+npm run test:api
 npm run typecheck
 npm run lint
 npm run format:check
 ```
 
-Run database migrations:
+Run database migrations against PostgreSQL:
 
 ```bash
 export DATABASE_URL=$(cat /workspace/.database_url)
 npm run db:migrate
 ```
 
-The initial migration enables the PostgreSQL `vector` extension. The configured
-database role must have permission to create extensions, or the extension must
-already be installed by the database administrator.
+The reference embedding schema requires the PostgreSQL `vector` extension. The
+configured database role must have permission to create extensions, or the
+extension must already be installed by the database administrator.
 
 Object storage uses the pre-provisioned S3-compatible environment variables
 documented in `.env.example`. All object operations prepend `S3_PREFIX` to
@@ -89,3 +91,19 @@ Provider OAuth routes under `/api/auth/oauth/{google|github}` delegate to
 myClawTeam auth and link the verified session to `user_identities`.
 Protected API routes should depend on `app.auth.dependencies.CurrentUser`,
 which injects the verified user context and stores it on `request.state`.
+
+## Deployment
+
+Deployment setup, runtime environment, preflight checks, and TeX Live
+provisioning are documented in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+Common production commands:
+
+```bash
+npm ci
+python3 -m pip install -r requirements.txt
+npm run build
+npm run deploy:check
+npm run db:migrate
+npm run start:api
+```
