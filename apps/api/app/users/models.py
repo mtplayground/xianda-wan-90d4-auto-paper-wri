@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
@@ -7,6 +8,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.papers.models import Paper
 
 
 class User(Base):
@@ -50,6 +54,11 @@ class User(Base):
 
     identities: Mapped[list["UserIdentity"]] = relationship(
         back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    papers: Mapped[list["Paper"]] = relationship(
+        back_populates="owner",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
