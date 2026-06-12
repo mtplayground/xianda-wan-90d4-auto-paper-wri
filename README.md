@@ -75,3 +75,6 @@ already be installed by the database administrator.
 Object storage uses the pre-provisioned S3-compatible environment variables
 documented in `.env.example`. All object operations prepend `S3_PREFIX` to
 relative keys before calling S3.
+
+The initial user schema stores one row per user in `users` and one row per
+linked local or OAuth identity in `user_identities`.
