@@ -23,6 +23,9 @@ class ClaudeConfig:
     api_key: str
     base_url: str
     model: str
+    max_tokens: int
+    timeout_seconds: float
+    temperature: float
 
 
 class Settings(BaseSettings):
@@ -45,6 +48,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     anthropic_base_url: str = "https://api.anthropic.com"
     claude_model: str | None = None
+    claude_max_tokens: int = 2048
+    claude_timeout_seconds: float = 60.0
+    claude_temperature: float = 0.2
     texlive_command: str = "pdflatex"
     texlive_timeout_seconds: int = 45
     texlive_max_runs: int = 2
@@ -76,10 +82,19 @@ class Settings(BaseSettings):
         )
 
     def require_claude(self) -> ClaudeConfig:
+        if self.claude_max_tokens < 1:
+            raise RuntimeError("CLAUDE_MAX_TOKENS must be greater than 0")
+        if self.claude_timeout_seconds <= 0:
+            raise RuntimeError("CLAUDE_TIMEOUT_SECONDS must be greater than 0")
+        if self.claude_temperature < 0 or self.claude_temperature > 1:
+            raise RuntimeError("CLAUDE_TEMPERATURE must be between 0 and 1")
         return ClaudeConfig(
             api_key=_require(self.anthropic_api_key, "ANTHROPIC_API_KEY"),
             base_url=self.anthropic_base_url,
             model=_require(self.claude_model, "CLAUDE_MODEL"),
+            max_tokens=self.claude_max_tokens,
+            timeout_seconds=self.claude_timeout_seconds,
+            temperature=self.claude_temperature,
         )
 
 
