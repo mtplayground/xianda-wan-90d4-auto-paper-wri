@@ -11,9 +11,10 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.auth.routes import router as auth_router
 from app.config import get_settings
-from app.db.session import verify_database_connection
+from app.db.session import get_session_factory, verify_database_connection
 from app.papers.routes import router as papers_router
 from app.storage.client import get_storage_client
+from app.templates.builtins import seed_builtin_templates
 from app.templates.routes import router as templates_router
 
 settings = get_settings()
@@ -22,7 +23,13 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    get_storage_client()
+    storage = get_storage_client()
+    try:
+        with get_session_factory()() as session:
+            seed_builtin_templates(session, storage)
+    except Exception:
+        logger.exception("Built-in template seeding failed")
+        raise
     yield
 
 
