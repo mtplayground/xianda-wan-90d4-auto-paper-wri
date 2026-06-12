@@ -16,6 +16,9 @@ from app.papers.schemas import (
     PaperAiPolishRequest,
     PaperAiResponse,
     PaperCreate,
+    PaperReferenceSearchRequest,
+    PaperReferenceSearchResponse,
+    PaperReferenceSearchResult,
     PaperResponse,
     PaperUpdate,
 )
@@ -24,6 +27,12 @@ from app.papers.service import (
     create_paper_for_owner,
     get_paper_for_owner,
     list_papers_for_owner,
+)
+from app.references.retrieval import (
+    DEFAULT_REFERENCE_CONTEXT,
+    ReferenceSearchResult,
+    build_reference_context,
+    search_reference_chunks,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,7 +65,49 @@ def _load_paper(
     return paper
 
 
-def _complete_ai_prompt(prompt: RenderedPrompt) -> PaperAiResponse:
+def _to_reference_search_result(
+    result: ReferenceSearchResult,
+) -> PaperReferenceSearchResult:
+    return PaperReferenceSearchResult(
+        reference_id=result.reference.id,
+        reference_title=result.reference.title,
+        chunk_id=result.chunk.id,
+        chunk_index=result.chunk.chunk_index,
+        content=result.chunk.content,
+        score=result.score,
+        distance=result.distance,
+        metadata=result.chunk.metadata_json,
+    )
+
+
+def _search_reference_context(
+    session: Session,
+    *,
+    owner_id: UUID,
+    paper_id: UUID,
+    query: str,
+    limit: int,
+    max_chars: int = 12_000,
+) -> tuple[str, list[PaperReferenceSearchResult]]:
+    if limit < 1:
+        return DEFAULT_REFERENCE_CONTEXT, []
+    results = search_reference_chunks(
+        session,
+        owner_id=owner_id,
+        paper_id=paper_id,
+        query=query,
+        limit=limit,
+    )
+    context = build_reference_context(results, max_chars=max_chars)
+    return context, [_to_reference_search_result(result) for result in results]
+
+
+def _complete_ai_prompt(
+    prompt: RenderedPrompt,
+    *,
+    reference_context: str,
+    references: list[PaperReferenceSearchResult],
+) -> PaperAiResponse:
     try:
         message = get_claude_client().complete_prompt(prompt)
     except ClaudeClientError as exc:
@@ -77,6 +128,8 @@ def _complete_ai_prompt(prompt: RenderedPrompt) -> PaperAiResponse:
         stop_reason=message.stop_reason,
         input_tokens=message.input_tokens,
         output_tokens=message.output_tokens,
+        reference_context=reference_context,
+        references=references,
     )
 
 
@@ -142,6 +195,21 @@ def polish_paper_text(
         owner_id=current_user.user.id,
         paper_id=paper_id,
     )
+    reference_query = payload.reference_query or payload.selected_text
+    try:
+        reference_context, references = _search_reference_context(
+            session,
+            owner_id=current_user.user.id,
+            paper_id=paper.id,
+            query=reference_query,
+            limit=payload.reference_limit,
+        )
+    except SQLAlchemyError as exc:
+        logger.exception("Reference retrieval for AI polish failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not retrieve reference context",
+        ) from exc
     try:
         prompt = render_prompt(
             "polish_selection",
@@ -150,6 +218,7 @@ def polish_paper_text(
             instruction=payload.instruction,
             surrounding_context=payload.surrounding_context
             or paper.latex_source[:20_000],
+            reference_context=reference_context,
             selected_text=payload.selected_text,
         )
     except PromptRenderError as exc:
@@ -158,7 +227,11 @@ def polish_paper_text(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not prepare AI editing prompt",
         ) from exc
-    return _complete_ai_prompt(prompt)
+    return _complete_ai_prompt(
+        prompt,
+        reference_context=reference_context,
+        references=references,
+    )
 
 
 @router.post("/{paper_id}/ai/continue", response_model=PaperAiResponse)
@@ -173,12 +246,28 @@ def continue_paper_text(
         owner_id=current_user.user.id,
         paper_id=paper_id,
     )
+    reference_query = payload.reference_query or payload.draft_context[-20_000:]
+    try:
+        reference_context, references = _search_reference_context(
+            session,
+            owner_id=current_user.user.id,
+            paper_id=paper.id,
+            query=reference_query,
+            limit=payload.reference_limit,
+        )
+    except SQLAlchemyError as exc:
+        logger.exception("Reference retrieval for AI continuation failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not retrieve reference context",
+        ) from exc
     try:
         prompt = render_prompt(
             "continue_draft",
             paper_title=paper.title,
             draft_context=payload.draft_context,
             instruction=payload.instruction,
+            reference_context=reference_context,
             target_length=payload.target_length,
         )
     except PromptRenderError as exc:
@@ -187,7 +276,48 @@ def continue_paper_text(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not prepare AI continuation prompt",
         ) from exc
-    return _complete_ai_prompt(prompt)
+    return _complete_ai_prompt(
+        prompt,
+        reference_context=reference_context,
+        references=references,
+    )
+
+
+@router.post(
+    "/{paper_id}/references/search",
+    response_model=PaperReferenceSearchResponse,
+)
+def search_paper_references(
+    paper_id: UUID,
+    payload: PaperReferenceSearchRequest,
+    current_user: CurrentUser,
+    session: Annotated[Session, Depends(get_session)],
+) -> PaperReferenceSearchResponse:
+    paper = _load_paper(
+        session,
+        owner_id=current_user.user.id,
+        paper_id=paper_id,
+    )
+    try:
+        context, results = _search_reference_context(
+            session,
+            owner_id=current_user.user.id,
+            paper_id=paper.id,
+            query=payload.query,
+            limit=payload.limit,
+            max_chars=payload.context_max_chars,
+        )
+    except SQLAlchemyError as exc:
+        logger.exception("Reference semantic search failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not search references",
+        ) from exc
+    return PaperReferenceSearchResponse(
+        query=payload.query,
+        context=context,
+        results=results,
+    )
 
 
 @router.patch("/{paper_id}", response_model=PaperResponse)

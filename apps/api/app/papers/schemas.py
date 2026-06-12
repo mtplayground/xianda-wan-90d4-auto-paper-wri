@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -61,6 +61,8 @@ class PaperAiPolishRequest(BaseModel):
         max_length=4_000,
     )
     operation: Literal["polish", "rewrite"] = "polish"
+    reference_query: str | None = Field(default=None, max_length=20_000)
+    reference_limit: int = Field(default=5, ge=0, le=10)
 
     @field_validator("selected_text")
     @classmethod
@@ -86,6 +88,8 @@ class PaperAiContinueRequest(BaseModel):
         max_length=4_000,
     )
     target_length: Literal["short", "medium", "long"] = "medium"
+    reference_query: str | None = Field(default=None, max_length=20_000)
+    reference_limit: int = Field(default=5, ge=0, le=10)
 
     @field_validator("draft_context")
     @classmethod
@@ -104,9 +108,42 @@ class PaperAiContinueRequest(BaseModel):
         return instruction
 
 
+class PaperReferenceSearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=20_000)
+    limit: int = Field(default=5, ge=1, le=20)
+    context_max_chars: int = Field(default=12_000, ge=500, le=30_000)
+
+    @field_validator("query")
+    @classmethod
+    def query_must_not_be_blank(cls, value: str) -> str:
+        query = value.strip()
+        if not query:
+            raise ValueError("Query must not be blank")
+        return query
+
+
+class PaperReferenceSearchResult(BaseModel):
+    reference_id: UUID
+    reference_title: str
+    chunk_id: UUID
+    chunk_index: int
+    content: str
+    score: float
+    distance: float
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class PaperReferenceSearchResponse(BaseModel):
+    query: str
+    context: str
+    results: list[PaperReferenceSearchResult]
+
+
 class PaperAiResponse(BaseModel):
     text: str
     model: str
     stop_reason: str | None
     input_tokens: int | None
     output_tokens: int | None
+    reference_context: str
+    references: list[PaperReferenceSearchResult] = Field(default_factory=list)
