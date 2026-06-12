@@ -1,13 +1,17 @@
+import logging
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_settings
+from app.db.session import verify_database_connection
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 app = FastAPI(title=settings.app_name)
 
 app.add_middleware(
@@ -22,6 +26,18 @@ app.add_middleware(
 @app.get("/api/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok", "service": settings.app_name}
+
+
+@app.get("/api/ready")
+def readiness_check() -> dict[str, str]:
+    try:
+        verify_database_connection()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SQLAlchemyError as exc:
+        logger.exception("Database readiness check failed")
+        raise HTTPException(status_code=503, detail="database unavailable") from exc
+    return {"status": "ok", "database": "connected"}
 
 
 WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"

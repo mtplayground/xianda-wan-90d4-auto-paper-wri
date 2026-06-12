@@ -51,3 +51,14 @@ npm run typecheck
 npm run lint
 npm run format:check
 ```
+
+Run database migrations:
+
+```bash
+export DATABASE_URL=$(cat /workspace/.database_url)
+npm run db:migrate
+```
+
+The initial migration enables the PostgreSQL `vector` extension. The configured
+database role must have permission to create extensions, or the extension must
+already be installed by the database administrator.

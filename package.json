@@ -23,6 +23,8 @@
     "format": "npm run format:web && npm run format:api",
     "format:check": "npm run format:check:web && npm run format:check:api",
     "typecheck": "npm run typecheck:web",
+    "db:migrate": "python3 -m alembic upgrade head",
+    "db:revision": "python3 -m alembic revision --autogenerate",
     "build": "npm run typecheck && npm run build:web && python3 -m compileall apps/api/app"
   },
   "engines": {
