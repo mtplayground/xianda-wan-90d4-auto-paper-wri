@@ -78,3 +78,7 @@ relative keys before calling S3.
 
 The initial user schema stores one row per user in `users` and one row per
 linked local or OAuth identity in `user_identities`.
+
+Authentication helpers use Argon2 for password hashing and verify the
+pre-provisioned `mctai_session` cookie against the myClawTeam JWKS endpoint.
+The backend does not issue a second application JWT.
