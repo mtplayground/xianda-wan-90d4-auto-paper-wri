@@ -4,6 +4,8 @@ from typing import Literal
 
 PromptName = Literal[
     "draft_section",
+    "continue_draft",
+    "polish_selection",
     "revise_latex",
     "summarize_references",
     "suggest_citations",
@@ -68,6 +70,33 @@ PROMPT_TEMPLATES: dict[PromptName, PromptTemplate] = {
             "Target section:\n{section_title}\n\n"
             "Relevant context:\n{context}\n\n"
             "Draft requirements:\n{requirements}"
+        ),
+    ),
+    "continue_draft": PromptTemplate(
+        name="continue_draft",
+        system=(
+            "You continue academic LaTeX manuscripts. Match the existing voice, "
+            "preserve valid LaTeX syntax, and return only the continuation text."
+        ),
+        user=(
+            "Paper title:\n{paper_title}\n\n"
+            "Draft context before the cursor:\n{draft_context}\n\n"
+            "Continuation length:\n{target_length}\n\n"
+            "Author instruction:\n{instruction}"
+        ),
+    ),
+    "polish_selection": PromptTemplate(
+        name="polish_selection",
+        system=(
+            "You polish academic LaTeX text. Preserve technical meaning, citations, "
+            "labels, commands, math, and environments. Return only the edited text."
+        ),
+        user=(
+            "Paper title:\n{paper_title}\n\n"
+            "Edit operation:\n{operation}\n\n"
+            "Author instruction:\n{instruction}\n\n"
+            "Surrounding draft context:\n{surrounding_context}\n\n"
+            "Selected text to edit:\n{selected_text}"
         ),
     ),
     "revise_latex": PromptTemplate(

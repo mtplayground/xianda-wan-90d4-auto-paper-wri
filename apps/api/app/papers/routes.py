@@ -7,8 +7,18 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import CurrentUser
+from app.claude import ClaudeClientError, PromptRenderError, get_claude_client
+from app.claude.prompts import RenderedPrompt, render_prompt
 from app.db.session import get_session
-from app.papers.schemas import PaperCreate, PaperResponse, PaperUpdate
+from app.papers.models import Paper
+from app.papers.schemas import (
+    PaperAiContinueRequest,
+    PaperAiPolishRequest,
+    PaperAiResponse,
+    PaperCreate,
+    PaperResponse,
+    PaperUpdate,
+)
 from app.papers.service import (
     apply_paper_update,
     create_paper_for_owner,
@@ -24,6 +34,49 @@ def _not_found() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="Paper not found",
+    )
+
+
+def _load_paper(
+    session: Session,
+    *,
+    owner_id: UUID,
+    paper_id: UUID,
+) -> Paper:
+    try:
+        paper = get_paper_for_owner(session, owner_id, paper_id)
+    except SQLAlchemyError as exc:
+        logger.exception("Paper lookup failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not load paper",
+        ) from exc
+    if paper is None:
+        raise _not_found()
+    return paper
+
+
+def _complete_ai_prompt(prompt: RenderedPrompt) -> PaperAiResponse:
+    try:
+        message = get_claude_client().complete_prompt(prompt)
+    except ClaudeClientError as exc:
+        logger.exception("Claude completion failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI editing request failed",
+        ) from exc
+    except RuntimeError as exc:
+        logger.exception("Claude client is not configured")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI editing is not configured",
+        ) from exc
+    return PaperAiResponse(
+        text=message.text,
+        model=message.model,
+        stop_reason=message.stop_reason,
+        input_tokens=message.input_tokens,
+        output_tokens=message.output_tokens,
     )
 
 
@@ -69,17 +122,72 @@ def get_paper(
     current_user: CurrentUser,
     session: Annotated[Session, Depends(get_session)],
 ) -> PaperResponse:
+    paper = _load_paper(
+        session,
+        owner_id=current_user.user.id,
+        paper_id=paper_id,
+    )
+    return PaperResponse.model_validate(paper)
+
+
+@router.post("/{paper_id}/ai/polish", response_model=PaperAiResponse)
+def polish_paper_text(
+    paper_id: UUID,
+    payload: PaperAiPolishRequest,
+    current_user: CurrentUser,
+    session: Annotated[Session, Depends(get_session)],
+) -> PaperAiResponse:
+    paper = _load_paper(
+        session,
+        owner_id=current_user.user.id,
+        paper_id=paper_id,
+    )
     try:
-        paper = get_paper_for_owner(session, current_user.user.id, paper_id)
-    except SQLAlchemyError as exc:
-        logger.exception("Paper lookup failed")
+        prompt = render_prompt(
+            "polish_selection",
+            paper_title=paper.title,
+            operation=payload.operation,
+            instruction=payload.instruction,
+            surrounding_context=payload.surrounding_context
+            or paper.latex_source[:20_000],
+            selected_text=payload.selected_text,
+        )
+    except PromptRenderError as exc:
+        logger.exception("AI polish prompt rendering failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not load paper",
+            detail="Could not prepare AI editing prompt",
         ) from exc
-    if paper is None:
-        raise _not_found()
-    return PaperResponse.model_validate(paper)
+    return _complete_ai_prompt(prompt)
+
+
+@router.post("/{paper_id}/ai/continue", response_model=PaperAiResponse)
+def continue_paper_text(
+    paper_id: UUID,
+    payload: PaperAiContinueRequest,
+    current_user: CurrentUser,
+    session: Annotated[Session, Depends(get_session)],
+) -> PaperAiResponse:
+    paper = _load_paper(
+        session,
+        owner_id=current_user.user.id,
+        paper_id=paper_id,
+    )
+    try:
+        prompt = render_prompt(
+            "continue_draft",
+            paper_title=paper.title,
+            draft_context=payload.draft_context,
+            instruction=payload.instruction,
+            target_length=payload.target_length,
+        )
+    except PromptRenderError as exc:
+        logger.exception("AI continuation prompt rendering failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not prepare AI continuation prompt",
+        ) from exc
+    return _complete_ai_prompt(prompt)
 
 
 @router.patch("/{paper_id}", response_model=PaperResponse)
