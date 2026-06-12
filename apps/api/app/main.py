@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.auth.routes import router as auth_router
 from app.config import get_settings
 from app.db.session import verify_database_connection
+from app.papers.routes import router as papers_router
 from app.storage.client import get_storage_client
 
 settings = get_settings()
@@ -35,6 +36,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(papers_router)
 
 
 @app.get("/api/health")
