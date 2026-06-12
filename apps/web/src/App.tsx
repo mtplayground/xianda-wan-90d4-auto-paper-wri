@@ -1,6 +1,7 @@
 import type { AuthProviderName, AuthUser } from "./auth/types";
 import { useAuth } from "./auth/useAuth";
 import { PaperDashboard } from "./papers/PaperDashboard";
+import { PaperEditorShell } from "./papers/PaperEditorShell";
 
 const providerLabels: Record<AuthProviderName, string> = {
   google: "Google",
@@ -272,9 +273,25 @@ function DashboardPage() {
   );
 }
 
+function PaperEditorPage({ paperId }: { paperId: string }) {
+  const { user } = useAuth();
+  if (!user) {
+    return <LandingPage />;
+  }
+
+  return (
+    <main className="min-h-[calc(100vh-4rem)] bg-zinc-50 px-5 py-8 text-zinc-950">
+      <section className="mx-auto max-w-7xl">
+        <PaperEditorShell paperId={paperId} />
+      </section>
+    </main>
+  );
+}
+
 function RouterView() {
   const { status } = useAuth();
   const path = window.location.pathname;
+  const paperEditorMatch = path.match(/^\/papers\/([^/]+)$/);
 
   if (status === "loading") {
     return <LoadingView />;
@@ -290,6 +307,14 @@ function RouterView() {
 
   if (path === "/dashboard") {
     return status === "authenticated" ? <DashboardPage /> : <AuthPage mode="login" />;
+  }
+
+  if (paperEditorMatch) {
+    return status === "authenticated" ? (
+      <PaperEditorPage paperId={decodeURIComponent(paperEditorMatch[1])} />
+    ) : (
+      <AuthPage mode="login" />
+    );
   }
 
   return status === "authenticated" ? <DashboardPage /> : <LandingPage />;

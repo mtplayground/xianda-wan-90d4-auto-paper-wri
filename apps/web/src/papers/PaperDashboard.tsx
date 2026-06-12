@@ -205,14 +205,22 @@ export function PaperDashboard() {
                     Updated {formatDate(paper.updated_at)}
                   </p>
                 </div>
-                <button
-                  className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={deletingId === paper.id}
-                  type="button"
-                  onClick={() => void handleDeletePaper(paper)}
-                >
-                  {deletingId === paper.id ? "Deleting..." : "Delete"}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                    href={`/papers/${paper.id}`}
+                  >
+                    Open
+                  </a>
+                  <button
+                    className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={deletingId === paper.id}
+                    type="button"
+                    onClick={() => void handleDeletePaper(paper)}
+                  >
+                    {deletingId === paper.id ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
               </div>
               <p className="mt-3 text-sm leading-6 text-zinc-700">
                 {sourceSummary(paper.latex_source)}
